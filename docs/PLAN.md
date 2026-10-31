@@ -493,57 +493,65 @@ clearing the vertical blank flag there changes nothing in its run. The
 check proves that the reads Chimera makes leave this game's machine alone,
 not that every side effect would show.
 
-## Where this stands (2026-10-31)
+## Where this stands (2026-10-31, second round)
 
-Works, and is tested here on Linux:
+Works, and is tested here on Linux against Chimera main cb46d2b7
+(`~/chimera-scratch-bump`):
 
 - Mesen's NES in the sandbox, identical to the native reference on two
-  homebrew games and the EPSM test program; savestates within a process and
-  across processes; turbo; virtual time; the EPSM present or absent by the
-  header; the rhythm ROM reaching the chip; settings; saved games in and
-  out and across a power cycle; the system bus; the package, its contract tests, its texts
-  in 26 languages; chimera-run (input polls, suggestions, firmware, a
-  movie); Chimera's window (5 checks).
-- Commands and counts: `run-gate.sh` 28 ok (32 with `CHIMERA_ROOT`),
-  `run-frontend.sh` 5 ok, `test-packages` 21 PASS, `check-core-texts.py`
-  37 keys.
+  homebrew games, the EPSM test program and the input test program;
+  savestates within a process and across processes; turbo; virtual time;
+  the EPSM present or absent by the header; the rhythm ROM reaching the
+  chip; settings; saved games in and out and across a power cycle.
+- The ports: a pad, nothing, the Four Score (four pads), the Zapper, the
+  Arkanoid controller; only the controls the ports hold are in a movie.
+- Two buses: the CPU's 64 KiB and the PPU's 16 KiB.
+- No network code in `core.wbx` (patch 0006, checked by `build:no-network`).
+- The package, its contract tests, its texts in 26 languages with every
+  name unbent (`texts:names`); chimera-run (input polls, suggestions,
+  firmware, movies, the devices); Chimera's window (5 checks).
+- Commands and counts: `run-gate.sh` 42 ok with `CHIMERA_ROOT` (36 ok
+  without, and two lines skipped), `run-frontend.sh` 5 ok, `test-packages`
+  21 PASS, `check-core-texts.py` 40 keys, `check-names.py` 0 in 26 tables,
+  Chimera's `check-proper-nouns.py` 0.
 
 Not done, or not proved:
 
 - **No real EPSM game has been run.** The EPSM is proved on this
-  repository's own test program: FM, SSG and rhythm writes through
-  $401C-$401F, SSG writes through $4016 (`epsm:4016`), and the chip's
-  timer A raising the CPU's IRQ (`epsm:present` counts 56 IRQs in 600
-  frames, none without the EPSM). A real game's music is untried. Needed from the owner: an EPSM game
-  or demo that may be used for testing, and the real
-  `ymf288_adpcm_rom.bin` (its SHA-1 can then be pinned in
+  repository's own test program only (FM, SSG, rhythm, $4016 writes, the
+  timer IRQ). By the owner's decision the package is not published, and no
+  other system is started, until a real EPSM game has run with the real
+  `ymf288_adpcm_rom.bin`. Needed from the owner: an EPSM game or demo that
+  may be used for testing, and the rhythm ROM (its SHA-1 then pinned in
   `waterbox.config`).
-- **No commercial game has been tried.** Mesen's accuracy claims are
-  Mesen's; this core has run Nova the Squirrel to its first level and
-  Sprilo, nothing else.
-- **Windows** has not been run (no Windows box in this round). The guest is
-  the same file; what has failed only on Windows before is stacks. A
-  Windows run should open an EPSM project and Nova in the window, play a
-  movie recorded on Linux and end on the same RAM, and save and load a
-  state.
-- Mesen's other systems are compiled in and refused at load.
-- Devices: only the standard pad on ports 1 and 2. The Zapper, Four Score,
-  Arkanoid paddle, Famicom expansion devices and the Famicom Disk System
-  (which needs its BIOS) are not offered.
-- The PPU's bus is not exported (the CPU's is; the PPU's memory is in the
-  domains CIRAM, PALRAM, OAM, CHR RAM/ROM).
+- **No commercial game has been tried**, and none of the devices has been
+  tried with a real game (Duck Hunt, Arkanoid, a four-player game): they
+  are proved on this repository's input test program.
+- **Windows** has not been run (no Windows box in this round either); the
+  owner wants a Windows run before publishing.
+- Mesen's other systems are compiled in and refused at load. Next after
+  the EPSM is proved: the SNES and the GBA (owner, 2026-10-31).
+- Devices not offered: the Famicom expansion port (its Zapper, Arkanoid
+  controller, four-player adapters, keyboards), the Power Pad, the Zapper
+  pointed off the screen (it can point at a black part of the picture),
+  and the Famicom Disk System (it needs its BIOS, not given yet).
+- `bus:ppu-look` would not catch every side effect: a read of $2002 per
+  byte went unseen on Nova (see "the PPU bus").
 - CI is written and has never run (no remote).
-- Upstream's own test ROM suite (Mesen's `.mtp` recorded tests) is not run:
-  the test ROMs are not in the MesenCE repository.
+- Upstream's own test ROM suite is not run (the ROMs are not in MesenCE).
 
-Next, in order: the owner's answers below; an EPSM game from the owner;
-the Windows run; the Zapper and Four Score; then the other
-systems, the SNES and the GBA first.
+Next, in order: an EPSM game and the rhythm ROM from the owner; a Windows
+run; then publishing as `mesen` ("Mesen"); then the SNES and the GBA.
+Content-free work that could come before: the Famicom expansion port's
+devices, the Zapper off the screen, the Power Pad.
 
 Traps, for whoever continues (each one cost time here):
 
 - Build both flavors before a test script: they build nothing and compare
   stale binaries.
+- A build option a patch adds does nothing until `meson.build` defines it
+  (patch 0007's was first left out, and the knob stayed where the mouse
+  put it).
 - Mesen's `SetPreferences` resets the firmware folder override; set the
   folders after the preferences.
 - An input provider registered before the game loads goes nowhere, and a
@@ -551,7 +559,11 @@ Traps, for whoever continues (each one cost time here):
 - The core's NES config defaults are not the UI's (volumes 0, no palette).
 - A path "./name" is not a mount's name: patch 0004.
 - Nova writes into its battery RAM from the fourth frame after power on.
+- The harness runs 600 frames unless told (`--frames`), whatever the input
+  file's length: an input file's last line is not the last frame then.
 - The window needs Qt's libraries: `--qt-lib`.
+- The language tables: an ending glued to a name hides behind a sign too
+  ("YMF288:n", "EPSM's", "Mesen'in"); Chimera's checker sees only letters.
 
 ## Questions for the owner
 
