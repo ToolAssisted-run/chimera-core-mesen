@@ -1555,3 +1555,26 @@ Traps, new this round:
 - The ColecoVision's games choose a game with the keypad on their first
   screen; the pad exercise's Start is the keypad's 1 there.
 - Mesen does not emulate the SG-1000's Hold button.
+
+
+## The Windows check, redone (2026-10-31)
+
+The Windows check written in "Published without a real EPSM game" above
+was wrong as written: its projects had no movie and chimera-run was not
+recording, so chimera-run ran 0 frames ("--frames 3000 asked, but the movie
+has 0 frames and nothing is being recorded: 0 will run") and only the
+power-on RAM was compared. It was redone the same day with --record, which
+runs the frames asked for:
+
+- The published build (Nightly 2026-10-31, a874aa55): Nova the Squirrel for
+  3000 frames, and the EPSM test program with EPSM Drums on and the real
+  rhythm ROM for 600 frames, end on the same RAM in chimera-run.exe of the
+  published Chimera for Windows (Development build cb46d2b7) as on Linux.
+- This round's package, with every console: Nova, the EPSM test program
+  (with the real rhythm ROM), and the test programs of the Super NES, Game
+  Boy, Master System, PC Engine, SuperGrafx, WonderSwan and Game Gear, each
+  1200 frames with no input, end on the same work RAM on Windows as on
+  Linux.
+
+Sound was not compared on Windows, and no owner's game was run there.
+
