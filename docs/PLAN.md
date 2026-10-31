@@ -653,7 +653,7 @@ that the rest is FamiStudio's code only; then put FamiStudio's `LICENSE`
 beside it (`tests/roms/famistudio-LICENSE`) and credit it in
 `tests/roms/README.md`. Not done: there is no exported cartridge yet.
 
-## Where this stands (2026-10-31, second round)
+## Where this stands (2026-10-31, third round)
 
 Works, and is tested here on Linux against Chimera main cb46d2b7
 (`~/chimera-scratch-bump`):
@@ -664,46 +664,64 @@ Works, and is tested here on Linux against Chimera main cb46d2b7
   the EPSM present or absent by the header; the rhythm ROM reaching the
   chip; settings; saved games in and out and across a power cycle.
 - The ports: a pad, nothing, the Four Score (four pads), the Zapper, the
-  Arkanoid controller; only the controls the ports hold are in a movie.
+  Arkanoid controller; and, new this round, the Famicom's expansion port:
+  the Famicom Zapper, the Famicom Arkanoid controller, the four-player
+  adapter. Only the controls the ports hold are in a movie.
 - Two buses: the CPU's 64 KiB and the PPU's 16 KiB.
 - No network code in `core.wbx` (patch 0006, checked by `build:no-network`).
 - The package, its contract tests, its texts in 26 languages with every
   name unbent (`texts:names`); chimera-run (input polls, suggestions,
-  firmware, movies, the devices); Chimera's window (5 checks).
-- Commands and counts: `run-gate.sh` 42 ok with `CHIMERA_ROOT` (36 ok
-  without, and two lines skipped), `run-frontend.sh` 5 ok, `test-packages`
-  21 PASS, `check-core-texts.py` 40 keys, `check-names.py` 0 in 26 tables,
-  Chimera's `check-proper-nouns.py` 0.
+  firmware, movies, the six devices); Chimera's window (6 checks).
+- Checks for EPSM songs exported by FamiStudio, ready and run on
+  FamiStudio's bare shells only (see "EPSM songs made with FamiStudio").
+- Commands and counts: `run-gate.sh` 46 ok with `CHIMERA_ROOT` (40 ok
+  without), `run-frontend.sh` 6 ok, each with the FamiStudio checks
+  skipped; `test-packages` 21 PASS, `check-core-texts.py` 45 keys,
+  `check-names.py` 0 in 26 tables, Chimera's `check-proper-nouns.py` 0.
 
 Not done, or not proved:
 
-- **No real EPSM game has been run.** The EPSM is proved on this
-  repository's own test program only (FM, SSG, rhythm, $4016 writes, the
-  timer IRQ). By the owner's decision the package is not published, and no
-  other system is started, until a real EPSM game has run with the real
-  `ymf288_adpcm_rom.bin`. Needed from the owner: an EPSM game or demo that
-  may be used for testing, and the rhythm ROM (its SHA-1 then pinned in
-  `waterbox.config`).
+- **No FamiStudio song has been run.** Exporting the owner's EPSM test
+  songs needs FamiStudio's program to run on this machine, and this
+  session's permission system refused it. Needed: permission to run it
+  (`dotnet FamiStudio.dll <song.fms> rom-export <out.nes>
+  -rom-export-mode:ntsc`), or the exported .nes files from the owner. Then
+  run the checks with `MESEN_FAMISTUDIO_ROMS`, compare each export with its
+  shell, and commit them to `tests/` with FamiStudio's licence if the
+  comparison shows only FamiStudio's code and the MIT song data.
+- **No real EPSM game has been run**, and the rhythm ROM has not been
+  seen. The EPSM is proved on this repository's own test program only (FM,
+  SSG, rhythm, $4016 writes, the timer IRQ); FamiStudio's songs would be
+  the first music made by someone else. By the owner's decision the package
+  is not published, and no other system is started, until a real EPSM game
+  has run with the real `ymf288_adpcm_rom.bin` (its SHA-1 then pinned in
+  `waterbox.config`). The made-up rhythm ROM stays the stand-in.
 - **No commercial game has been tried**, and none of the devices has been
-  tried with a real game (Duck Hunt, Arkanoid, a four-player game): they
-  are proved on this repository's input test program.
-- **Windows** has not been run (no Windows box in this round either); the
-  owner wants a Windows run before publishing.
+  tried with a real game (Duck Hunt, Arkanoid, a four-player game, a
+  Famicom game using the expansion port): they are proved on this
+  repository's input test program.
+- **Windows** has not been run (no Windows box this round either; no GPU
+  is needed); the owner wants a Windows run before publishing.
 - Mesen's other systems are compiled in and refused at load. Next after
   the EPSM is proved: the SNES and the GBA (owner, 2026-10-31).
-- Devices not offered: the Famicom expansion port (its Zapper, Arkanoid
-  controller, four-player adapters, keyboards), the Power Pad, the Zapper
+- Devices not offered: the adapter's two-player mode, the Famicom's
+  keyboards and Mesen's other expansion devices, the Power Pad, the Zapper
   pointed off the screen (it can point at a black part of the picture),
   and the Famicom Disk System (it needs its BIOS, not given yet).
+- The window check `expansion:frontend` proves the machine, not the list
+  of active controls: the window's Lua script presses buttons the core
+  says are not there (a break of that list went unseen there;
+  `engine:devices` catches it).
 - `bus:ppu-look` would not catch every side effect: a read of $2002 per
   byte went unseen on Nova (see "the PPU bus").
 - CI is written and has never run (no remote).
 - Upstream's own test ROM suite is not run (the ROMs are not in MesenCE).
 
-Next, in order: an EPSM game and the rhythm ROM from the owner; a Windows
+Next, in order: the FamiStudio songs (once FamiStudio may run, or the owner
+exports them); an EPSM game and the rhythm ROM from the owner; a Windows
 run; then publishing as `mesen` ("Mesen"); then the SNES and the GBA.
-Content-free work that could come before: the Famicom expansion port's
-devices, the Zapper off the screen, the Power Pad.
+Content-free work that could come before: the Zapper off the screen, the
+Power Pad, the adapter's two-player mode.
 
 Traps, for whoever continues (each one cost time here):
 
@@ -724,8 +742,23 @@ Traps, for whoever continues (each one cost time here):
 - The window needs Qt's libraries: `--qt-lib`.
 - The language tables: an ending glued to a name hides behind a sign too
   ("YMF288:n", "EPSM's", "Mesen'in"); Chimera's checker sees only letters.
+- `systemd-run --scope` does not keep the shell's working folder for the
+  command it runs here: give the runners absolute paths.
+- The package's SHA-1 changes with every commit (its version is the
+  commit): compare packages built at the same commit only.
+- FamiStudio's bare shells have the EPSM in their header and its driver in
+  their program, but play no EPSM note: a check that only asks "is the
+  EPSM plugged in" passes on them; ask what the EPSM added to the sound.
 
 ## Questions for the owner
 
 The three questions of the first round (the fork, the licence, the network
-code) were answered on 2026-10-31; see "the owner's decisions" above.
+code) and the two of the second (where the Zapper plugs in, the axes'
+ranges) were answered on 2026-10-31; see the owner's decisions above.
+
+Open:
+
+- FamiStudio's export: may FamiStudio's Linux build be run on this machine
+  to export the EPSM test songs (it was refused this round as code from
+  outside the repository), or will the owner export them? Either way the
+  checks are ready.
