@@ -653,7 +653,39 @@ that the rest is FamiStudio's code only; then put FamiStudio's `LICENSE`
 beside it (`tests/roms/famistudio-LICENSE`) and credit it in
 `tests/roms/README.md`. Not done: there is no exported cartridge yet.
 
-## Where this stands (2026-10-31, third round)
+## 2026-10-31: FamiStudio may export the test songs (user-decided, 2026-10-31)
+
+The owner allowed, on 2026-10-31 (asked and answered in the owner's
+session, passed to the fourth round), running FamiStudio 4.5.3's Linux
+build on this machine to export songs. Only its command-line export is
+allowed, for example
+`dotnet FamiStudio.dll <song.fms> rom-export <out.nes> -rom-export-mode:ntsc`
+(and `pal`), under the memory cap, from the copy unpacked in the third
+round under `build/famistudio`. Nothing else from FamiStudio is run.
+
+**It was refused again.** The fourth round copied `TestEPSM.fms`,
+`TestMultiEPSM.fms`, `Instruments EPSM.fms`, the two shells and
+FamiStudio's `LICENSE` into `build/famistudio/songs` and ran, once:
+
+```
+env -u DISPLAY -u WAYLAND_DISPLAY HOME=build/famistudio/home \
+  XDG_CONFIG_HOME=build/famistudio/home/.config \
+  systemd-run --user --scope --quiet -p MemoryMax=8G -p MemorySwapMax=0 \
+  /usr/bin/dotnet build/famistudio/unpack/FamiStudio.dll \
+  build/famistudio/songs/TestEPSM.fms rom-export \
+  build/famistudio/export/TestEPSM-ntsc.nes -rom-export-mode:ntsc
+```
+
+(with absolute paths). This session's permission system refused it before
+it ran, as "Code from External". As the rules of the work say, it was not
+tried another way, and the round stopped there: no song was exported, so
+none was run, compared with its shell or committed. The owner's permission
+reached the agent through the task, not through the permission system;
+for the export to run, the permission has to be given there (a rule
+allowing that command in the session's settings), or the owner exports
+the songs and hands over the .nes files.
+
+## Where this stands (2026-10-31, fourth round)
 
 Works, and is tested here on Linux against Chimera main cb46d2b7
 (`~/chimera-scratch-bump`):
@@ -682,10 +714,12 @@ Works, and is tested here on Linux against Chimera main cb46d2b7
 Not done, or not proved:
 
 - **No FamiStudio song has been run.** Exporting the owner's EPSM test
-  songs needs FamiStudio's program to run on this machine, and this
-  session's permission system refused it. Needed: permission to run it
-  (`dotnet FamiStudio.dll <song.fms> rom-export <out.nes>
-  -rom-export-mode:ntsc`), or the exported .nes files from the owner. Then
+  songs needs FamiStudio's program to run on this machine. The owner
+  allowed it (2026-10-31), but the session's permission system refused it
+  in the third round and again in the fourth. Needed: a permission rule in
+  the session's settings for that one command (`dotnet FamiStudio.dll
+  <song.fms> rom-export <out.nes> -rom-export-mode:ntsc`), or the exported
+  .nes files from the owner. Then
   run the checks with `MESEN_FAMISTUDIO_ROMS`, compare each export with its
   shell, and commit them to `tests/` with FamiStudio's licence if the
   comparison shows only FamiStudio's code and the MIT song data.
@@ -717,8 +751,13 @@ Not done, or not proved:
 - CI is written and has never run (no remote).
 - Upstream's own test ROM suite is not run (the ROMs are not in MesenCE).
 
-Next, in order: the FamiStudio songs (once FamiStudio may run, or the owner
-exports them); an EPSM game and the rhythm ROM from the owner; a Windows
+The fourth round changed nothing but this log: FamiStudio's export, now
+allowed by the owner, was refused again by the session's permission system
+(see "FamiStudio may export the test songs"). Nothing was rebuilt or
+re-tested in that round; the counts above are the third round's.
+
+Next, in order: the FamiStudio songs (once the permission system lets the
+export run, or the owner exports them); an EPSM game and the rhythm ROM from the owner; a Windows
 run; then publishing as `mesen` ("Mesen"); then the SNES and the GBA.
 Content-free work that could come before: the Zapper off the screen, the
 Power Pad, the adapter's two-player mode.
@@ -758,7 +797,8 @@ ranges) were answered on 2026-10-31; see the owner's decisions above.
 
 Open:
 
-- FamiStudio's export: may FamiStudio's Linux build be run on this machine
-  to export the EPSM test songs (it was refused this round as code from
-  outside the repository), or will the owner export them? Either way the
-  checks are ready.
+- FamiStudio's export: the owner allowed it (2026-10-31), but the session's
+  permission system still refuses the command ("Code from External"). Will
+  the owner add a permission rule for it, or export the songs (NTSC and
+  PAL of `TestEPSM.fms`, `TestMultiEPSM.fms`, `Instruments EPSM.fms`) and
+  hand over the .nes files? Either way the checks are ready.
