@@ -14,6 +14,11 @@ waterbox/tests/systems.sh. A machine is named by its option of the setting
         an input file that presses each button of each of the first
         <players> players in turn (each player one column ahead of the one
         before), nothing before frame <from> (default 0)
+    systems.py column <machine> <frames> <player> <column> <out.inputs>
+        an input file holding only that player's column (from 0) for the
+        last 30 of <frames> frames
+    systems.py columns <machine>
+        how many columns the machine's pad has
     systems.py hold <machine> <frames> <out.inputs> <frame>:<count>:<button>[,<button>]... ...
         an input file holding the named buttons ("P1 Start", "Power") from
         <frame> for <count> frames
@@ -86,6 +91,20 @@ def schedule(name, players, frames, start=0):
             if p < players and f >= start:
                 held[(f // 8 + p) % width] = True
             pads.append(held)
+        out.append(line([False] * len(console), pads))
+    return out
+
+
+def column(name, frames, player, col, hold=30):
+    """nothing pressed but player <player>'s column <col>, held for the last
+    <hold> frames"""
+    inp, console, plist = machine(name)
+    width = len(plist[0])
+    out = []
+    for f in range(frames):
+        pads = [[False] * width for _ in plist]
+        if f >= frames - hold:
+            pads[player - 1][col] = True
         out.append(line([False] * len(console), pads))
     return out
 
@@ -183,8 +202,12 @@ def check_gb(name):
         order = ["Down", "Up", "Left", "Right", "Start", "Select", "B", "A"]
         got = {b for i, b in enumerate(order) if ram[0] & (0x80 >> i)}
         want = held_cols(name, lines[-1], 1)
-        return report([] if got == want else ["P1 read %s, not %s" % (sorted(got), sorted(want))],
-                      ["P1 " + ("+".join(sorted(got)) or "-")])
+        problems = [] if got == want else ["P1 read %s, not %s" % (sorted(got), sorted(want))]
+        # the boot program's A at $C002: $11 on a Game Boy Color, $01 on a Game Boy
+        model = {0x01: "a Game Boy", 0x11: "a Game Boy Color"}.get(ram[2], "A=%02x" % ram[2])
+        if model != ("a Game Boy Color" if name == "gbc" else "a Game Boy"):
+            problems.append("the program ran on %s" % model)
+        return report(problems, ["P1 " + ("+".join(sorted(got)) or "-"), "on " + model])
     return check
 
 
@@ -258,6 +281,11 @@ def main():
         start = int(sys.argv[6]) if len(sys.argv) > 6 else 0
         rows = schedule(sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), start)
         open(sys.argv[5], "w").write("\n".join(rows) + "\n")
+    elif cmd == "column":
+        rows = column(sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]))
+        open(sys.argv[6], "w").write("\n".join(rows) + "\n")
+    elif cmd == "columns":
+        print(len(machine(sys.argv[2])[2][0]))
     elif cmd == "hold":
         rows = hold(sys.argv[2], int(sys.argv[3]), sys.argv[5:])
         open(sys.argv[4], "w").write("\n".join(rows) + "\n")

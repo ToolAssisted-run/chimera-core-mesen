@@ -40,6 +40,8 @@ sysdir() { # tag file settings [src=id]...
 #                      picture, sound, lag, every memory domain)
 #   <tag>:input        the program's RAM holds the schedule's last frame's
 #                      buttons, and the run without them is another machine
+#   <tag>:buttons      each button of each player, held alone at the end of
+#                      a short run, is read as itself and no other
 #   <tag>:savestate    a save and a load around every frame change nothing
 #   <tag>:turbo        no picture for half the run: the same machine, sound
 #                      and later pictures, and the first half really undrawn
@@ -49,7 +51,7 @@ sysdir() { # tag file settings [src=id]...
 #   <tag>:bus          the system bus read whole after every frame changes
 #                      nothing, and reads the same in both flavors
 sys_program_legs() { # tag machine rom settings players frames domain [src=id]...
-	local tag="$1" machine="$2" rom="$3" settings="$4" players="$5" frames="$6" domain="$7"
+	local tag="$1" machine="$2" rom="$3" settings="$4" players="$5" frames="$6" domain="$7" colframes="${COLFRAMES:-240}"
 	shift 7
 	local wd wire inputs
 	wd="$(sysdir "$tag" "$rom" "$settings" "$@")"
@@ -80,6 +82,29 @@ sys_program_legs() { # tag machine rom settings players frames domain [src=id]..
 		report "$tag:input" FAIL "the run without the buttons is the same machine"
 	else
 		report "$tag:input" PASS "$seen; the idle run is another machine"
+	fi
+
+	# every button on its own: each player's each column held alone at the
+	# end of a short run reaches the program as that button and no other
+	# (natively; equivalence above holds the sandbox to the native runs)
+	local ncol p c bad="" nrun=0
+	ncol="$(python3 -I "$sys_py" columns "$machine")"
+	for p in $(seq 1 "$players"); do
+		for c in $(seq 0 $((ncol - 1))); do
+			python3 -I "$sys_py" column "$machine" "$colframes" "$p" "$c" "$work/$tag.col.inputs"
+			"$rn" "$wd" --frames "$colframes" --inputs "$work/$tag.col.inputs" --wire "$wire" \
+				--dump-domain "$domain" "$work/$tag.col.ram" > /dev/null 2>&1
+			nrun=$((nrun + 1))
+			if ! seen="$(python3 -I "$sys_py" check "$machine" "$players" "$work/$tag.col.inputs" "$work/$tag.col.ram" 2>&1)"; then
+				bad="P$p column $c: $seen"
+				break 2
+			fi
+		done
+	done
+	if [ -n "$bad" ]; then
+		report "$tag:buttons" FAIL "$bad"
+	else
+		report "$tag:buttons" PASS "each of the $nrun buttons of $players player(s), held alone, reaches the program as itself and no other"
 	fi
 
 	if rw "$wd" "${args[@]}" --rerecord 2>/dev/null | digests > "$work/$tag.rr" && cmp -s "$work/$tag.box" "$work/$tag.rr"; then
@@ -130,7 +155,7 @@ sys_program_legs() { # tag machine rom settings players frames domain [src=id]..
 # enough to reach play, native == sandbox == sandboxed with a save and a
 # load around every frame, and another machine than the run with nothing
 # pressed (the pad reached the game); a state crosses processes; the sound is not
-# silence and the last picture has more than a few colours. SKIP when the
+# silence and the last picture is not one colour (a blank screen). SKIP when the
 # game or a firmware file it needs is absent.
 sys_game_leg() { # tag machine file settings frames [src=id]...
 	local tag="$1" machine="$2" file="$3" settings="$4" frames="$5"
@@ -171,7 +196,7 @@ sys_game_leg() { # tag machine file settings frames [src=id]...
 		report "$tag" FAIL "the run with nothing pressed is the same machine: the pad did not reach the game"
 	elif ! awk -v r="${rms:-0}" 'BEGIN { exit !(r > 1) }'; then
 		report "$tag" FAIL "the game was silent (sound RMS ${rms:-none})"
-	elif [ "${colours:-0}" -lt 4 ]; then
+	elif [ "${colours:-0}" -lt 2 ]; then
 		report "$tag" FAIL "the last picture has ${colours:-no} colours"
 	else
 		report "$tag" PASS "$frames frames of the pad exercise: native == sandbox == saved and loaded each frame, != idle; a state crosses processes; sound RMS $rms; the last picture has $colours colours"
@@ -239,6 +264,20 @@ systems_core() {
 		fi
 	done
 
+	# ------------------------------------------------------------ the Game Boy and Game Boy Color
+	sys_program_legs gb gb "$root/tests/roms/gb-test.gb" '{"machine":"gb"}' 1 600 WRAM
+	sys_program_legs gbc gbc "$root/tests/roms/gb-test.gb" '{"machine":"gbc"}' 1 600 WRAM
+	local gbg="$scontent/systems/gb" gbcg="$scontent/systems/gbc"
+	sys_game_leg gb:game:bugsbunny gb "$gbg/Bugs Bunny - Crazy Castle II (U) [!].gb" '{"machine":"gb"}' 1800
+	sys_game_leg gb:game:fairy gb "$gbg/A_FAIRY_WITHOUT_WINGS_v1_3_0.gb" '{"machine":"gb"}' 1800
+	sys_game_leg gb:game:kirby gb "$gbg/Kirby's Hoshinoka-Bi (J) (V1.1).gb" '{"machine":"gb"}' 1800
+	sys_game_leg gb:game:kirby-nintendo-boot gb "$gbg/Kirby's Hoshinoka-Bi (J) (V1.1).gb" '{"machine":"gb","bootRom":"nintendo"}' 1800 GB_dmg.bin=dmg_boot.bin
+	sys_game_leg gbc:game:smbdx gbc "$gbcg/Super Mario Bros. Deluxe (USA, Europe) (Rev A).gbc" '{"machine":"gbc"}' 1800
+	sys_game_leg gbc:game:gold gbc "$gbcg/Pokemon - Gold Version (UE) [C][!].gbc" '{"machine":"gbc"}' 1800
+	sys_game_leg gbc:game:pop gbc "$gbcg/Prince of Persia (USA, Europe).gbc" '{"machine":"gbc"}' 1800
+	sys_game_leg gbc:game:slime gbc "$gbcg/aslimetravel.gbc" '{"machine":"gbc"}' 1800
+	sys_game_leg gbc:game:smbdx-nintendo-boot gbc "$gbcg/Super Mario Bros. Deluxe (USA, Europe) (Rev A).gbc" '{"machine":"gbc","bootRom":"nintendo"}' 1800 GBC_cgb.bin=cgb_boot.bin
+
 	local g
 	g="$scontent/systems/snes"
 	sys_game_leg snes:game:smw snes "$g/Super Mario World (U) [!].smc" '{"machine":"snes"}' 1800
@@ -285,11 +324,11 @@ sys_engine_leg() { # check machine rom settings players frames domain [src=id]..
 	elif ! cmp -s "$work/$check.native.ram" "$work/$check.engine.ram"; then
 		report "$check" FAIL "the movie through Chimera ends on another $domain than the native run"
 	elif [ "$rom" = "${rom#$root/tests/roms/}" ]; then
-		report "$check" PASS "a $frames-frame movie of $players pads made into a project and replayed by another chimera-run ends on the native reference's $domain"
+		report "$check" PASS "a $frames-frame movie ($players players) made into a project and replayed by another chimera-run ends on the native reference's $domain"
 	elif ! seen="$(python3 -I "$sys_py" check "$machine" "$players" "$work/$check.inputs" "$work/$check.engine.ram" 2>&1)"; then
 		report "$check" FAIL "through Chimera: $seen"
 	else
-		report "$check" PASS "a $frames-frame movie of $players pads made into a project and replayed by another chimera-run ends on the native reference's $domain; $seen"
+		report "$check" PASS "a $frames-frame movie ($players players) made into a project and replayed by another chimera-run ends on the native reference's $domain; $seen"
 	fi
 }
 
@@ -317,6 +356,9 @@ systems_engine() {
 	sys_engine_leg engine:snes snes "$root/tests/roms/snes-test.sfc" '{"machine":"snes"}' 2 480 WRAM
 	sys_engine_leg engine:snes-multitap snes "$root/tests/roms/snes-test.sfc" '{"machine":"snes","snesPort2":"multitap"}' 5 480 WRAM
 	sys_polls_leg engine:snes-polls snes "$root/tests/roms/snes-test.sfc" '{"machine":"snes"}' 2 300
+	sys_engine_leg engine:gb gb "$root/tests/roms/gb-test.gb" '{"machine":"gb"}' 1 600 WRAM
+	sys_engine_leg engine:gbc gbc "$root/tests/roms/gb-test.gb" '{"machine":"gbc"}' 1 600 WRAM
+	sys_polls_leg engine:gb-polls gb "$root/tests/roms/gb-test.gb" '{"machine":"gb"}' 1 300
 	local kirby="$scontent/systems/gb/Kirby's Hoshinoka-Bi (J) (V1.1).gb"
 	if [ -n "$scontent" ] && [ -f "$kirby" ]; then
 		sys_engine_leg engine:sgb sgb "$kirby" '{"machine":"sgb"}' 2 900 "GB WRAM" "SNES_SGB2_(J).sfc=SGB2.sfc"

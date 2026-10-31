@@ -1184,6 +1184,67 @@ ramPowerOnState "zeros" where the window would say "random"; both run as
 recorded. The engine and window checks run the native reference with the
 settings the project recorded.
 
+## 2026-10-31: the Game Boy and Game Boy Color (sixth round, step 2)
+
+- Machines `GB` ("Game Boy") and `GBC` ("Game Boy Color"), one player,
+  "Game Boy Controls" (Up Down Left Right Start Select B A, the letters
+  gambatte's core uses), shown at 160x144. Mesen's model is the machine's:
+  the GB machine is always a Game Boy (DMG) and the GBC machine always a
+  Game Boy Color, whatever the cartridge's header prefers (Mesen's own
+  default picks by the header).
+- Boot ROM (`bootRom`, now also on these two machines): Mesen's own (the
+  SameBoy boot programs Mesen carries) or Nintendo's, which is the
+  firmware dmg_boot.bin (256 bytes) or cgb_boot.bin (2304 bytes), pinned to
+  the owner's files. The owner's GB_mgb.bin (Game Boy Pocket) and
+  GBC_agb.bin (a Game Boy Color in a Game Boy Advance) are not files Mesen
+  reads.
+- Clock Start applies to them too (the MBC3 cartridges' clock).
+- Six new texts in all 26 tables.
+
+The test program, `tests/gb-test/make-gb-test.py` (`tests/roms/gb-test.gb`,
+our own SM83 program; its header asks for colour where there is some, so
+one file is both machines' test): each frame it reads the buttons into RAM
+$C000, counts frames, writes both to its battery RAM, shows the byte as
+the background's colour (the Game Boy's palette register and the Game Boy
+Color's colour 0) and plays channel 1 at a frequency it gives. At power on
+it keeps the A register the boot program left ($01 on a Game Boy, $11 on a
+Game Boy Color), so the check knows which console ran it. Its logo bytes
+are zero: it starts with Mesen's own boot program, not Nintendo's.
+
+A new check for every machine's test program: `<tag>:buttons` - each
+button of each player, held alone for the last 30 frames of a short run,
+is read as itself and no other (natively; the equivalence check holds the
+sandbox to the native runs). The input check before it looks at the
+schedule's last frame only, which holds one button: a build with the Game
+Boy's Up and Down swapped passed it (the last frame held Left).
+
+Checks: `gb:*` and `gbc:*` on the test program (equivalence, input,
+buttons, savestate, turbo, session, bus); the owner's games: Bugs Bunny -
+Crazy Castle II, A Fairy Without Wings, Kirby's Hoshinoka-Bi (and Kirby
+with Nintendo's boot ROM) on the Game Boy; Super Mario Bros. Deluxe (and
+with Nintendo's boot ROM), Pokemon Gold, Prince of Persia and A Slime
+Travel on the Game Boy Color, 1800 frames of the pad exercise each;
+`engine:gb`, `engine:gbc`, `engine:gb-polls`; in the window `gb:frontend`,
+`gbc:frontend`, `gb:keybinds`, `gbc:game-frontend` (Pokemon Gold).
+
+Seen to fail, with the adapter broken on purpose and rebuilt: the Game
+Boy's Up and Down swapped (`gb:buttons`: "P1 read ['Down'], not ['Up']");
+the GBC machine run as a Game Boy (`gbc:input`, `engine:gbc`: "the program
+ran on a Game Boy").
+
+Patch 0009 is NOT proved by a game here. A check was written (Pokemon Gold
+powered off and on after the host stopped for 1.5 s) and it passed with
+the clock read from the host again, so it was dropped: Mesen's MBC3 clock
+counts the machine's own clock ticks and reads the host's time only when a
+saved clock is loaded, which a power cycle does in the same frame as the
+save; and the clocks that do read the host's time on every update (the
+S-3511A of Game Boy Advance and WonderSwan cartridges, the SPC7110's
+RTC-4513) are in none of the owner's games.
+
+The picture check of the owner's games now fails only a picture of one
+colour (a blank screen): Pokemon Gold's 1800th frame is Professor Oak on a
+white background, two colours, in play.
+
 ## Where this stands (2026-10-31, sixth round)
 
 Works, and is tested here on Linux against Chimera main cb46d2b7
@@ -1196,17 +1257,21 @@ Works, and is tested here on Linux against Chimera main cb46d2b7
   (`machine`). Offered so far: the **Super NES** (pads, the multitap, the
   chips' programs as each game's firmware, Clock Start for the SPC7110's
   clock and the Satellaview's date) and the **Super Game Boy** (Super Game
-  Boy and Super Game Boy 2, Mesen's or Nintendo's boot ROM).
-- Commands and counts: `run-gate.sh` 53 ok with neither Chimera nor the
-  owner's files, 62 ok with Chimera, 90 ok with Chimera, MESEN_CONTENT_DIR,
-  MESEN_SYSTEMS_CONTENT and MESEN_PUBLISHED_PACKAGE; `run-frontend.sh` 8 ok
-  without the owner's files, 13 ok with them; `test-packages` PASS (0
-  failed); `check-core-texts.py` 107 keys; `check-names.py` 0 in 26 tables;
+  Boy and Super Game Boy 2, Mesen's or Nintendo's boot ROM), the **Game
+  Boy** and the **Game Boy Color** (Mesen's or Nintendo's boot ROM).
+- Commands and counts: `run-gate.sh` 69 ok with neither Chimera nor the
+  owner's files, 81 ok with Chimera, 118 ok with Chimera, MESEN_CONTENT_DIR,
+  MESEN_SYSTEMS_CONTENT and MESEN_PUBLISHED_PACKAGE; `run-frontend.sh` 11 ok
+  without the owner's files, 17 ok with them; `test-packages` PASS (0
+  failed); `check-core-texts.py` 113 keys; `check-names.py` 0 in 26 tables;
   Chimera's `check-proper-nouns.py` 0.
 
 Not done, or not proved:
 
-- The other systems (steps 2 to 6 above): not offered yet.
+- The other systems (steps 3 to 6 above): not offered yet.
+- Patch 0009 (the cartridges' clocks on the machine's time) is in the
+  build, but no game here reads such a clock in a way a check could see
+  (see step 2).
 - The Satellaview (.bs) and the Sufami Turbo (.st): declared, never run (no
   BIOS was given; the owner's two .bs games need the BS-X BIOS).
 - The Super NES chips DSP-2, DSP-3, DSP-4, ST010, ST011 and ST018: their
@@ -1217,7 +1282,8 @@ Not done, or not proved:
 - The Super NES test program makes no sound (it does not load a program
   into the sound CPU); the sound is proved on the owner's games only, so CI
   proves the Super NES's sound only as native == sandbox on silence.
-- Nintendo's boot ROMs (Boot ROM = Nintendo's) were not run.
+- Nintendo's Super Game Boy boot ROMs were not run (the Game Boy's and
+  the Game Boy Color's were, on Kirby and Super Mario Bros. Deluxe).
 - The mouse, the Super Scope and the other Super NES devices Mesen has are
   not offered.
 - No Windows run of the new machines.

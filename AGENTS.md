@@ -5,8 +5,8 @@ guest for Chimera and packages it as `mesen.chimeraCore`: `core.wbx` (the
 emulator built for miniBox), `waterbox.config`, `file_slots.json`,
 `default_keybinds.json`, `languages/`, `pictures/`, the licence texts and
 `build.json`. It runs the NES, with the EPSM, and, as machines of the same
-package picked by the setting `machine`, the Super NES and the Super Game
-Boy; Mesen's other systems are being added one by one (owner, 2026-10-31).
+package picked by the setting `machine`, the Super NES, the Super Game
+Boy, the Game Boy and the Game Boy Color; Mesen's other systems are being added one by one (owner, 2026-10-31).
 `docs/BUILDING.md` has every step; `docs/PLAN.md` the reasons and the state
 of the work.
 
@@ -49,11 +49,11 @@ MB=<chimera>/extern/chimera-common-minibox     # built with -Dguest_cpp=true in 
 git submodule update --init
 meson setup build/meson-native -Dminibox_dir="$MB" && ninja -C build/meson-native -j4
 sh waterbox/setup-guest.sh -m "$MB" && ninja -C build/meson-guest -j4
-./waterbox/run-gate.sh                                   # 53 ok, 0 failed, the engine and game checks skipped
+./waterbox/run-gate.sh                                   # 69 ok, 0 failed, the engine and game checks skipped
 ./waterbox/build-package.sh -m "$MB" -o build/Cores
 <chimera>/build/meson-linux/source/ui/test-packages build/Cores
-CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 62 ok, 0 failed (90 with every owner's file)
-./waterbox/tests/run-frontend.sh --chimera-root <chimera> [--qt-lib <Qt lib folder>]   # 8 ok (13 with the owner's files)
+CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 81 ok, 0 failed (118 with every owner's file)
+./waterbox/tests/run-frontend.sh --chimera-root <chimera> [--qt-lib <Qt lib folder>]   # 11 ok (17 with the owner's files)
 python3 <chimera>/tools/check-core-texts.py .            # every key named
 ```
 

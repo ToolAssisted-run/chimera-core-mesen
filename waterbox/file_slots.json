@@ -38,7 +38,9 @@
         "setting": "machine",
         "in": [
           "snes",
-          "sgb"
+          "sgb",
+          "gb",
+          "gbc"
         ]
       }
     },

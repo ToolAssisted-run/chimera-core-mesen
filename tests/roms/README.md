@@ -32,3 +32,7 @@ The input schedules in `tests/inputs/` were written for this repository.
   shows pad 1 as the backdrop colour. The same script builds, at test time,
   the same program with the headers of the cartridges that have a DSP-1 to
   4, ST010, ST011 or ST018 chip.
+- `gb-test.gb` - this repository's own Game Boy test program, built by
+  `tests/gb-test/make-gb-test.py`: it keeps the buttons it reads in its RAM,
+  shows and sounds them, and notes which console the boot program says it
+  runs on. The same file is the Game Boy Color's test.

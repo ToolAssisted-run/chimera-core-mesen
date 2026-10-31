@@ -18,7 +18,8 @@ controllers, or a multitap for five players; the cartridge chips whose
 program the game's file lacks - DSP-1 to 4, ST010, ST011, ST018 - are asked
 for as the game's firmware) and the **Super Game Boy** (a Game Boy game on
 the Super NES, with the Super Game Boy's or Super Game Boy 2's program as
-firmware). The Satellaview (.bs) and the Sufami Turbo (.st) are declared but
+firmware), the **Game Boy** and the **Game Boy Color** (Mesen's own boot
+program, or Nintendo's as firmware). The Satellaview (.bs) and the Sufami Turbo (.st) are declared but
 not tried: no BIOS for them was at hand. An NES project made before keeps
 playing as it did.
 

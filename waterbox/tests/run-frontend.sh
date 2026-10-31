@@ -399,6 +399,15 @@ else
 	report "sgb:frontend" SKIP "needs Kirby's Hoshinoka-Bi in MESEN_SYSTEMS_CONTENT"
 fi
 
+system_window_leg gb:frontend gb "$root/tests/roms/gb-test.gb" '{"machine":"gb"}' GB WRAM "P1 Left,P1 B"
+system_window_leg gbc:frontend gbc "$root/tests/roms/gb-test.gb" '{"machine":"gbc"}' GBC WRAM "P1 Down,P1 Start"
+system_keys_leg gb:keybinds gbkeys "$root/tests/roms/gb-test.gb" '{"machine":"gb"}' "Game Boy Controls"
+if [ -f "$sgames/gbc/Pokemon - Gold Version (UE) [C][!].gbc" ]; then
+	system_window_leg gbc:game-frontend gold "$sgames/gbc/Pokemon - Gold Version (UE) [C][!].gbc" '{"machine":"gbc"}' GBC WRAM ""
+else
+	report "gbc:game-frontend" SKIP "needs Pokemon Gold in MESEN_SYSTEMS_CONTENT"
+fi
+
 # --- the bindings the package ships are the machine's when nobody changed them ---
 p="$(make_project keys nova.nes '{}')"
 job="$work/job.keys.txt"
