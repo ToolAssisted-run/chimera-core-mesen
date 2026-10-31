@@ -1,0 +1,55 @@
+--- a/Core/Shared/BatteryManager.h
++++ b/Core/Shared/BatteryManager.h
+@@ -7,6 +7,16 @@
+ 	virtual vector<uint8_t> LoadBattery(string extension) = 0;
+ };
+ 
++#ifdef MESEN_BATTERY_SINK
++//A host with no files of its own keeps what the game saved: SaveBattery
++//hands the data here instead of writing a file.
++class IBatterySink
++{
++public:
++	virtual void SaveBattery(string extension, uint8_t* data, uint32_t length) = 0;
++};
++#endif
++
+ class IBatteryRecorder
+ {
+ public:
+@@ -21,6 +31,9 @@
+ 
+ 	std::weak_ptr<IBatteryProvider> _provider;
+ 	std::weak_ptr<IBatteryRecorder> _recorder;
++#ifdef MESEN_BATTERY_SINK
++	std::weak_ptr<IBatterySink> _sink;
++#endif
+ 
+ 	string GetBasePath(string& extension);
+ 
+@@ -31,6 +44,9 @@
+ 
+ 	void SetBatteryProvider(shared_ptr<IBatteryProvider> provider);
+ 	void SetBatteryRecorder(shared_ptr<IBatteryRecorder> recorder);
++#ifdef MESEN_BATTERY_SINK
++	void SetBatterySink(shared_ptr<IBatterySink> sink) { _sink = sink; }
++#endif
+ 
+ 	void SaveBattery(string extension, uint8_t* data, uint32_t length);
+ 
+--- a/Core/Shared/BatteryManager.cpp
++++ b/Core/Shared/BatteryManager.cpp
+@@ -37,6 +37,13 @@
+ 	}
+ 
+ 	_hasBattery = true;
++#ifdef MESEN_BATTERY_SINK
++	shared_ptr<IBatterySink> sink = _sink.lock();
++	if(sink) {
++		sink->SaveBattery(extension, data, length);
++		return;
++	}
++#endif
+ 	ofstream out(GetBasePath(extension), ios::binary);
+ 	if(out) {
+ 		out.write((char*)data, length);

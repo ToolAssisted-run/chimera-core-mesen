@@ -1,0 +1,64 @@
+{
+  "package": "mesen",
+  "effectiveTerms": "GPL-3.0",
+  "commercialUse": "allowed under the GPL",
+  "note": "Mesen (MesenCE) is GPL-3.0, and the built core, which links it with this repository's adapter, is distributed under those terms. The libraries Mesen carries inside its source are listed below with their own terms; all of them may be combined into a GPL-3.0 program. Some (HQX, blip_buf, nes_ntsc: LGPL-2.1; xBRZ, Scale2x, 2xSaI: GPL; stb_vorbis, gif.h, sha1, the LZMA SDK: public domain; spng: BSD-2-Clause and libpng-2.0) state their terms in their source files, which the source link of Mesen holds.",
+  "components": [
+    {
+      "name": "chimera-core-mesen (the adapter, the patches, the build)",
+      "license": "GPL-3.0",
+      "url": "https://github.com/ToolAssisted-run/chimera-core-mesen",
+      "commit": "{selfCommit}",
+      "file": "LICENSE"
+    },
+    {
+      "name": "Mesen (MesenCE)",
+      "license": "GPL-3.0",
+      "url": "https://github.com/nesdev-org/MesenCE",
+      "commit": "{submodule:extern/MesenCE}",
+      "file": "extern/MesenCE/LICENSE",
+      "sourceUrl": "https://github.com/nesdev-org/MesenCE/archive/{commit}.tar.gz"
+    },
+    {
+      "name": "ymfm (the YMF288 of the EPSM), inside Mesen",
+      "license": "BSD-3-Clause",
+      "url": "https://github.com/aaronsgiles/ymfm",
+      "commit": "{submodule:extern/MesenCE}",
+      "file": "extern/MesenCE/Utilities/Audio/ymfm/ymfm.h"
+    },
+    {
+      "name": "Lua 5.4, inside Mesen",
+      "license": "MIT",
+      "url": "https://www.lua.org",
+      "commit": "{submodule:extern/MesenCE}",
+      "file": "extern/MesenCE/Lua/lua.h"
+    },
+    {
+      "name": "magic_enum, inside Mesen",
+      "license": "MIT",
+      "url": "https://github.com/Neargye/magic_enum",
+      "commit": "{submodule:extern/MesenCE}",
+      "file": "extern/MesenCE/Utilities/magic_enum.hpp"
+    },
+    {
+      "name": "kissfft, inside Mesen",
+      "license": "BSD-3-Clause",
+      "url": "https://github.com/mborgerding/kissfft",
+      "commit": "{submodule:extern/MesenCE}",
+      "file": "extern/MesenCE/Utilities/kissfft.h"
+    },
+    {
+      "name": "miniz, inside Mesen",
+      "license": "Unlicense (public domain)",
+      "url": "https://github.com/richgel999/miniz",
+      "commit": "{submodule:extern/MesenCE}",
+      "file": "extern/MesenCE/Utilities/miniz.h"
+    },
+    {
+      "name": "An NES controller, a photograph (pictures/nes-controller.png)",
+      "license": "Public domain",
+      "url": "https://commons.wikimedia.org/wiki/File:Nintendo-Entertainment-System-NES-Controller-FL.jpg",
+      "file": "pictures/nes-controller.txt"
+    }
+  ]
+}

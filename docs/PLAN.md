@@ -217,6 +217,56 @@ and then put back:
   found it in its working folder. Patch 0004 (`MESEN_BARE_PATHS`) names a
   file in the folder "." by its bare name.
 
+## 2026-10-31: the package
+
+`waterbox/build-package.sh -m <miniBox> -o <folder>` writes
+`mesen.chimeraCore` (`-r <chimera>` writes it into a Chimera checkout's
+build/Cores, which is what Chimera's publishing job runs). What it declares:
+
+- the system `NES`, named "Nintendo Entertainment System"; 512x240 room
+  for the picture (256x240, or 512x240 for a VS DualSystem game showing
+  both screens), shown at 293x240; 48000 Hz stereo sound; NTSC's
+  39375000/655171 frames a second, PAL and Dendy 322445/6448 (the same
+  rates Mesen uses: 60.0988 and 50.0070);
+- the controller: Power and Reset (the console's), then pads 1 and 2 in
+  quickerNES's order, the same letters as quickerNES's movies (A B s S U D
+  L R), and P and r for Power and Reset. The picture is the quickerNES
+  core's photograph of an NES pad (public domain). Default keys bind pad 1
+  only and leave Power and Reset unbound;
+- settings: `region` (auto, ntsc, pal, dendy), `port1` and `port2`
+  (controller or nothing), `ramPowerOnState` (zeros - Mesen's own default
+  - ones, random), `randomSeed`, and `epsmDrums` (off, on);
+- one firmware: `ymf288_adpcm_rom.bin`, 8 KiB, needed when `epsmDrums` is
+  on. No SHA-1 is pinned (nobody here has seen the file; it can be pinned
+  when the owner provides it). Its name hints are adpcm, 2608, 288, rhythm;
+- `SuggestSettings` reads the cartridge's header and suggests `epsmDrums`
+  on for an EPSM cartridge. The drums are a setting and not a firmware
+  every EPSM game must bring, because they change the sound only (the
+  rhythm part's samples are never read back by the machine), so a person
+  without the ROM can still play and make movies;
+- two file slots: the cartridge (.nes, .unf, .unif) and the saved game it
+  starts from (.sav). The saved game is kept in the guest's memory (patch
+  0005, `MESEN_BATTERY_SINK`): what the game saves replaces it, and a power
+  cycle reloads it, as on the console. `Emulator > Export Save Data`
+  writes the battery RAM as battery.sav;
+- the texts, in all 26 of Chimera's languages (37 keys; the 25 others
+  translated by Claude, like every core's).
+
+Measured: Chimera's contract tests (`test-packages`) pass, 21 checks;
+`tools/check-core-texts.py`: 37 keys, every one named, every name a key.
+`run-gate.sh` with `CHIMERA_ROOT` and the package adds three checks through
+chimera-run - 2376 reads of the pads in 300 frames of Sprilo reach Chimera's
+input-poll callback; the suggestion is made for the EPSM cartridge and not
+for Nova; the rhythm ROM given to Chimera reaches Mesen - and three for the
+saved game (imported, refused by a cartridge with no battery, kept across a
+power cycle). 29 ok, 0 failed. Seen to fail: the input-read hook not set
+(`inputPolls=0`), and the battery sink not set (the power cycle lost the
+saved game).
+
+Trap: Nova writes into its battery RAM from the fourth frame after power
+on, so "the battery RAM survived a power cycle" is checked two frames after
+Power, against the same schedule without Power.
+
 ## Questions for the owner
 
 - Which fork: MesenCE (recommended, chosen) or the archived Mesen2.

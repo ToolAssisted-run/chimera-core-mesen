@@ -1,0 +1,22 @@
+{
+  "_comment": "Default bindings for the controller this package declares: the frontend uses them for a controller the user's setup has never seen, and Config > Controls' Defaults button comes back to them. Only player 1 is bound; Power and Reset are left unbound so that no key press restarts a run by accident.",
+  "AllTrollers": {
+    "NES Controller": {
+      "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
+      "P1 Down": "Down, J1 POV0D, X1 DpadDown, X1 LStickDown",
+      "P1 Left": "Left, J1 POV0L, X1 DpadLeft, X1 LStickLeft",
+      "P1 Right": "Right, J1 POV0R, X1 DpadRight, X1 LStickRight",
+      "P1 Start": "Enter, J1 B10, X1 Start",
+      "P1 Select": "Space, J1 B9, X1 Back",
+      "P1 B": "Z, J1 B1, X1 X",
+      "P1 A": "X, J1 B2, X1 A"
+    }
+  },
+  "AllTrollersAutoFire": {
+    "NES Controller": {
+      "P1 B": "A",
+      "P1 A": "S"
+    }
+  },
+  "AllTrollersAnalog": {}
+}

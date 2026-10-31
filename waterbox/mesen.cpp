@@ -16,7 +16,9 @@
 #include <cstdio>
 #include <cstring>
 #include <sstream>
+#include <map>
 #include <string>
+#include <vector>
 
 #include <emulibc.h>
 #include <waterbox_settings.h>
@@ -28,6 +30,7 @@
 #include "Shared/SettingTypes.h"
 #include "Shared/MemoryType.h"
 #include "Shared/MessageManager.h"
+#include "Shared/BatteryManager.h"
 #include "Shared/BaseControlDevice.h"
 #include "Shared/BaseControlManager.h"
 #include "Shared/RenderedFrame.h"
@@ -176,7 +179,28 @@ public:
 	void SetFullscreenMode(FullscreenSettings) override {}
 };
 
+/* What the game saves to its battery-backed memory, kept in the guest's
+ * memory (patch 0005): a project's save data file is what it starts with,
+ * what the game saves since replaces it, and a power cycle reloads it, as on
+ * the console. Being guest memory, it is part of every savestate. */
+class ChimeraBattery : public IBatteryProvider, public IBatterySink
+{
+public:
+	std::map<std::string, std::vector<uint8_t>> files;
+
+	vector<uint8_t> LoadBattery(string extension) override
+	{
+		auto it = files.find(extension);
+		return it == files.end() ? vector<uint8_t>() : it->second;
+	}
+	void SaveBattery(string extension, uint8_t *data, uint32_t length) override
+	{
+		files[extension].assign(data, data + length);
+	}
+};
+
 static ChimeraInput *g_input;
+static shared_ptr<ChimeraBattery> *g_battery;
 static ChimeraAudio *g_audioDev;
 static ChimeraVideo *g_videoDev;
 
@@ -290,6 +314,36 @@ ECL_EXPORT const char *GetLoadError(void)
 	return g_loadError;
 }
 
+/* What the core would choose before the game boots (Chimera's new-project
+ * window asks it instead of Init, on the same mounts). The cartridge's
+ * header says whether it has the EPSM; when it does, the EPSM's drums are
+ * suggested, and with them the rhythm ROM they play from. */
+ECL_EXPORT const char *SuggestSettings(void)
+{
+	static char answer[256];
+	char name[512];
+	const char *file = "rom";
+	if (wbx_slot_count("rom") > 0 && wbx_slot_name("rom", 0, name, sizeof name) != NULL)
+		file = name;
+	uint8_t h[16] = { 0 };
+	FILE *f = fopen(file, "rb");
+	size_t got = f ? fread(h, 1, sizeof h, f) : 0;
+	if (f)
+		fclose(f);
+	if (got < 16 || memcmp(h, "NES\x1a", 4) != 0) {
+		snprintf(answer, sizeof answer, "{\"values\": {}, \"note\": \"suggest.not_ines\"}");
+		return answer;
+	}
+	/* NES 2.0, console type 3 (extended), extended console type 4: the EPSM
+	 * (Mesen's NesHeader::HasEpsm) */
+	int epsm = (h[7] & 0x0C) == 0x08 && (h[7] & 0x03) == 0x03 && (h[13] & 0x0F) == 0x04;
+	if (epsm)
+		snprintf(answer, sizeof answer, "{\"values\": {\"epsmDrums\": \"on\"}, \"note\": \"suggest.epsm\"}");
+	else
+		snprintf(answer, sizeof answer, "{\"values\": {}, \"note\": \"suggest.no_epsm\"}");
+	return answer;
+}
+
 ECL_EXPORT int Init(void)
 {
 	g_loadError[0] = 0;
@@ -320,6 +374,25 @@ ECL_EXPORT int Init(void)
 	g_emu->GetSoundMixer()->RegisterAudioDevice(g_audioDev);
 	g_emu->GetVideoRenderer()->RegisterRenderingDevice(g_videoDev);
 
+	/* the saved game the project starts from, if it has one */
+	g_battery = new shared_ptr<ChimeraBattery>(new ChimeraBattery());
+	char saveName[512];
+	int hasSave = wbx_slot_count("savedata") > 0 && wbx_slot_name("savedata", 0, saveName, sizeof saveName) != NULL;
+	if (hasSave) {
+		FILE *sf = fopen(saveName, "rb");
+		if (sf == NULL) {
+			snprintf(g_loadError, sizeof g_loadError, "error.not_opened" TEXT_ARG "%s", saveName);
+			return 0;
+		}
+		std::vector<uint8_t> &data = (*g_battery)->files[".sav"];
+		uint8_t buf[4096];
+		for (size_t n; (n = fread(buf, 1, sizeof buf, sf)) > 0;)
+			data.insert(data.end(), buf, buf + n);
+		fclose(sf);
+	}
+	g_emu->GetBatteryManager()->SetBatteryProvider(*g_battery);
+	g_emu->GetBatteryManager()->SetBatterySink(*g_battery);
+
 	/* the cartridge: the project slot's file, else the plain rom mount */
 	char name[512];
 	const char *file = "rom";
@@ -340,6 +413,11 @@ ECL_EXPORT int Init(void)
 		snprintf(g_loadError, sizeof g_loadError, "error.not_nes" TEXT_ARG "%s", file);
 		return 0;
 	}
+	if (hasSave && g_emu->GetMemory(MemoryType::NesSaveRam).Size == 0) {
+		snprintf(g_loadError, sizeof g_loadError, "error.no_battery" TEXT_ARG "%s", saveName);
+		return 0;
+	}
+
 	/* an input provider belongs to the console, so it is given once the
 	 * console exists, and again whenever a power cycle makes a new one */
 	g_emu->RegisterInputProvider(g_input);
@@ -357,6 +435,18 @@ ECL_EXPORT int Init(void)
 	/* one greppable line per boot: the gate witnesses through it that both
 	 * flavors built the same machine around the cartridge's header */
 	fprintf(stderr, "[mesen] EPSM %s\n", g_epsm ? "present" : "absent");
+	if (g_epsm) {
+		/* whether the drums have their sounds: Mesen reads the file only if
+		 * it is exactly 8 KiB (FirmwareHelper::LoadYmf288AdpcmRom) */
+		FILE *rf = fopen("ymf288_adpcm_rom.bin", "rb");
+		long size = -1;
+		if (rf) {
+			fseek(rf, 0, SEEK_END);
+			size = ftell(rf);
+			fclose(rf);
+		}
+		fprintf(stderr, "[mesen] EPSM rhythm ROM %s\n", size == 0x2000 ? "loaded" : "missing: the drums are silent");
+	}
 	return 1;
 }
 

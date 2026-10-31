@@ -1,0 +1,22 @@
+This repository is licensed as follows:
+
+- Everything original to this repository (waterbox/, the build scripts, the
+  meson files, tests/epsm-test/, tests/inputs/, docs/) is under the GNU
+  General Public License, version 3, the licence of Mesen itself. The
+  adapter carries Mesen's default NES palette, and patches/ are changes to
+  Mesen's source, so both are Mesen's terms anyway.
+
+- Mesen (MesenCE) is the submodule extern/MesenCE, unmodified, under its own
+  licence: GPL-3.0 (extern/MesenCE/LICENSE). The libraries inside it keep
+  their own terms (waterbox/package-licenses.json lists them).
+
+- tests/roms/ holds free homebrew games under their authors' terms (see
+  tests/roms/README.md) and the EPSM test program this repository builds.
+
+- The built core (core.wbx and the package) is Mesen linked with this
+  repository's adapter, and is distributed under GPL-3.0.
+
+The full text of the GPL-3.0 is in extern/MesenCE/LICENSE and at
+https://www.gnu.org/licenses/gpl-3.0.txt.
+
+Copyright (c) 2026 Sergio Martin

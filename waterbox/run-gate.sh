@@ -272,6 +272,54 @@ else
 	report "savedata:export" FAIL "the exported files differ"
 fi
 
+# A project's saved game is what the cartridge starts with: the battery RAM
+# Nova saved, given back as the savedata slot, is the battery RAM on the
+# first frame, in both flavors. A cartridge with no battery refuses one.
+wi="$work/sd.import"
+rm -rf "$wi" && mkdir -p "$wi"
+cp "$root/tests/roms/nova.nes" "$work/sd.box/battery.sav" "$wi/"
+printf '{"rom":["nova.nes"],"savedata":["battery.sav"]}' > "$wi/slots"
+"$rn" "$wi" --frames 1 --dump-domain "Battery RAM" "$work/sdi.nat" > /dev/null 2>&1
+rw "$wi" --frames 1 --dump-domain "Battery RAM" "$work/sdi.box" > /dev/null 2>&1
+rw "$work/nova" --frames 1 --dump-domain "Battery RAM" "$work/sdi.fresh" > /dev/null 2>&1
+if cmp -s "$work/sdi.nat" "$wi/battery.sav" && cmp -s "$work/sdi.box" "$wi/battery.sav" && ! cmp -s "$work/sdi.fresh" "$wi/battery.sav"; then
+	report "savedata:import" PASS "the saved game is the battery RAM on frame 1, native and sandboxed; a fresh cartridge's is not"
+else
+	report "savedata:import" FAIL "the battery RAM on frame 1 is not the saved game given"
+fi
+wn="$(workdir sd.nobattery epsm-test.nes)"
+cp "$work/sd.box/battery.sav" "$wn/"
+printf '{"rom":["epsm-test.nes"],"savedata":["battery.sav"]}' > "$wn/slots"
+"$rn" "$wn" --frames 1 > /dev/null 2> "$work/nb.nat"
+rw "$wn" --frames 1 > /dev/null 2> "$work/nb.box"
+if grep -q 'Init failed: error.no_battery' "$work/nb.nat" && grep -q 'Init failed: error.no_battery' "$work/nb.box"; then
+	report "savedata:no-battery" PASS "a cartridge with no battery refuses a saved game, in both flavors"
+else
+	report "savedata:no-battery" FAIL "native: $(grep -m1 Init "$work/nb.nat"); sandbox: $(grep -m1 Init "$work/nb.box")"
+fi
+
+# A power cycle keeps what the game saved, as the console's battery does:
+# Power pressed after Nova's schedule, and two frames later the battery RAM
+# is the one before it. (Two: Nova's start-up writes into that RAM from the
+# fourth frame on.) The same schedule without Power is the control: its RAM
+# must differ, or Power did nothing.
+cp "$root/tests/inputs/nova.inputs" "$work/power.inputs"
+cp "$root/tests/inputs/nova.inputs" "$work/nopower.inputs"
+printf '|P.|........|\n|..|........|\n|..|........|\n' >> "$work/power.inputs"
+printf '|..|........|\n|..|........|\n|..|........|\n' >> "$work/nopower.inputs"
+"$rn" "$work/nova" --inputs "$work/power.inputs" --dump-domain "Battery RAM" "$work/pc.nat" > /dev/null 2>&1
+rw "$work/nova" --inputs "$work/power.inputs" --dump-domain "Battery RAM" "$work/pc.box" 2>/dev/null | digests > "$work/pc.box.txt"
+rw "$work/nova" --inputs "$work/nopower.inputs" --dump-domain "Battery RAM" "$work/pc.before" 2>/dev/null | digests > "$work/pc.before.txt"
+if ! cmp -s "$work/pc.nat" "$work/pc.box"; then
+	report "savedata:power-cycle" FAIL "after the power cycle, native and sandbox differ"
+elif [ "$(grep '^domain\[RAM\]' "$work/pc.box.txt")" = "$(grep '^domain\[RAM\]' "$work/pc.before.txt")" ]; then
+	report "savedata:power-cycle" FAIL "Power did nothing: the RAM is the run's without it"
+elif ! cmp -s "$work/pc.box" "$work/pc.before"; then
+	report "savedata:power-cycle" FAIL "the power cycle lost what the game saved"
+else
+	report "savedata:power-cycle" PASS "Power restarts the console and the battery RAM survives it"
+fi
+
 # ---------------------------------------------------------------- Chimera's engine
 # Each read of the controls reaches Chimera as it happens, so a Lua script's
 # event.oninputpoll runs there (chimera#344): every frame the game read them
@@ -297,8 +345,41 @@ if [ -n "${CHIMERA_ROOT:-}" ] && [ -x "$runner" ] && [ -f "$package" ]; then
 	else
 		report "engine:input-polls" FAIL "inputPolls=${polls:-missing} frames=${frames:-?} lagFrames=${lags:-?}, or counting moved RAM; the runner said: $(tail -1 "$work/polls.log" 2> /dev/null)"
 	fi
+
+	# What the core suggests for a game (the new-project window asks before
+	# the game boots): the EPSM's drums for a cartridge whose header has the
+	# EPSM, nothing for one without.
+	"$runner" --new-project "$work/sg.epsm.chimeraProject" "$package" "$root/tests/roms/epsm-test.nes" > /dev/null 2>&1
+	"$runner" --new-project "$work/sg.nova.chimeraProject" "$package" "$root/tests/roms/nova.nes" > /dev/null 2>&1
+	sg_e="$("$runner" --project "$work/sg.epsm.chimeraProject" "$package" --files "$root/tests/roms" --suggest 2>&1 | tail -1)"
+	sg_n="$("$runner" --project "$work/sg.nova.chimeraProject" "$package" --files "$root/tests/roms" --suggest 2>&1 | tail -1)"
+	if printf '%s' "$sg_e" | grep -q '"epsmDrums": "on"' && printf '%s' "$sg_n" | grep -q '"values": {}'; then
+		report "engine:suggest" PASS "EPSM Drums suggested for the EPSM cartridge, nothing for Nova"
+	else
+		report "engine:suggest" FAIL "EPSM cartridge: $sg_e / Nova: $sg_n"
+	fi
+
+	# The rhythm ROM through Chimera: a project with EPSM Drums on, given the
+	# firmware, mounts it where Mesen looks; given none, the core says the
+	# drums are silent.
+	python3 -I - "$work/rhythm.bin" <<'PYROM'
+import random, sys
+r = random.Random(410)
+open(sys.argv[1], "wb").write(bytes(r.randrange(256) for _ in range(8192)))
+PYROM
+	"$runner" --new-project "$work/fw.chimeraProject" "$package" "$root/tests/roms/epsm-test.nes" \
+		--settings '{"epsmDrums":"on"}' --firmware "ymf288_adpcm_rom.bin=$work/rhythm.bin" > /dev/null 2>&1
+	"$runner" --project "$work/fw.chimeraProject" "$package" --files "$root/tests/roms" \
+		--firmware "ymf288_adpcm_rom.bin=$work/rhythm.bin" --frames 30 --record "$work/fw.txt" > "$work/fw.log" 2>&1
+	"$runner" --project "$work/fw.chimeraProject" "$package" --files "$root/tests/roms" \
+		--frames 30 --record "$work/fw2.txt" > "$work/fw2.log" 2>&1
+	if grep -q 'EPSM rhythm ROM loaded' "$work/fw.log" && grep -q 'EPSM rhythm ROM missing' "$work/fw2.log"; then
+		report "engine:epsm-firmware" PASS "the rhythm ROM given to Chimera reaches Mesen; without it the core says the drums are silent"
+	else
+		report "engine:epsm-firmware" FAIL "with the file: $(grep -m1 'rhythm\|chimera-run' "$work/fw.log"); without: $(grep -m1 'rhythm\|chimera-run' "$work/fw2.log")"
+	fi
 else
-	report "engine:input-polls" SKIP "needs CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
+	report "engine:*" SKIP "3 checks: need CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
 fi
 
 echo ""
