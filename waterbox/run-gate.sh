@@ -358,6 +358,14 @@ else
 	report "savedata:power-cycle" PASS "Power restarts the console and the battery RAM survives it"
 fi
 
+# ---------------------------------------------------------------- the build
+# No network code in the guest (patches/0006, user-decided 2026-10-31).
+if nn="$("$here/tests/check-no-network.sh" "$gst/core.wbx" 2>&1)"; then
+	report "build:no-network" PASS "$nn"
+else
+	report "build:no-network" FAIL "$(printf '%s' "$nn" | short)"
+fi
+
 # ---------------------------------------------------------------- Chimera's engine
 # Each read of the controls reaches Chimera as it happens, so a Lua script's
 # event.oninputpoll runs there (chimera#344): every frame the game read them

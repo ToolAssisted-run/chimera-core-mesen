@@ -26,7 +26,8 @@ endif
 # Build options Mesen's own makefile does not set, all of them this
 # repository's patches: one thread (0001), a random sequence of our own
 # (0002), a call at each read of the controls (0003), files named by their
-# bare names in the folder "." (0004), saved games kept by the host (0005).
+# bare names in the folder "." (0004), saved games kept by the host (0005),
+# no network code (0006; waterbox/list-sources.py leaves its sources out).
 defs = [
   '-DNDEBUG',
   '-DMESEN_SINGLE_THREAD',
@@ -34,6 +35,7 @@ defs = [
   '-DMESEN_INPUT_READ_HOOK',
   '-DMESEN_BARE_PATHS',
   '-DMESEN_BATTERY_SINK',
+  '-DMESEN_NO_NETWORK',
 ]
 add_project_arguments(defs + ['-fno-strict-aliasing', '-Wno-narrowing'], language: ['c', 'cpp'])
 

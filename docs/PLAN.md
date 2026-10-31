@@ -26,8 +26,8 @@ Both have the EPSM. MesenCE has two EPSM fixes Mesen2 does not:
 "NES: EPSM: ymfm fixes (#292)" (2026-10-07, a sync of the YM chip library
 with its upstream). The core pins **MesenCE at 4b8a196e** (2026-10-07), the
 head of its default branch when the work started. It is where Mesen is
-maintained now and it has the better EPSM. (Which fork is the owner's to
-confirm; see "Questions for the owner".)
+maintained now and it has the better EPSM. (The owner confirmed this fork
+on 2026-10-31; see "the owner's decisions" below.)
 
 ### What the EPSM is in Mesen, and how complete
 
@@ -318,6 +318,56 @@ version spent its time in an unacknowledged IRQ: every variant counted 238
 - `epsm:4016`: channel B through $4016 changes the sound and not the
   machine; with OUT1 low it is silent.
 
+## 2026-10-31: the owner's decisions (user-decided, 2026-10-31)
+
+The owner accepted every recommendation of the first round:
+
+- **Fork**: MesenCE at 4b8a196e, kept.
+- **This repository's licence**: GPL-3.0 for all of it, kept. (The adapter
+  carries Mesen's default palette table and the patches are Mesen's code,
+  so it cannot be MIT as other cores' adapters are.)
+- **The EPSM drums**: the setting "EPSM Drums", off by default, suggested
+  on for an EPSM cartridge, which makes the rhythm ROM required firmware.
+  Kept as built.
+- **Network code**: Mesen's netplay and luasocket are patched out with a
+  build option before publishing. Done this round (next section).
+- **Publishing**: later, as id `mesen` named "Mesen", after a real EPSM
+  game has run, with the real rhythm ROM, and after a Windows run.
+- **Systems**: the NES only until the EPSM is proved on a real game; then
+  the SNES and the GBA.
+
+A rule for the language tables came with them (owner, 2026-10-31): proper
+nouns are never translated or bent. Mesen, NES, EPSM, YMF288 and every
+other name stay as they are written; a language that puts endings on names
+says the sentence with a common noun beside the name. See "names in the
+language tables" below.
+
+## 2026-10-31: no network code (patch 0006)
+
+Mesen's library holds netplay (`Core/Netplay`, a game server and client over
+`Utilities/Socket`) and luasocket, a socket library for Lua scripts. Before
+this round both were compiled into `core.wbx` and never called; the
+sandbox has no network calls to give them. They are now out:
+
+- patch 0006, build option `MESEN_NO_NETWORK`: the `Emulator` makes no game
+  server or client; the three places that asked "is a netplay client
+  connected" take "no"; loading a state no longer asks; the Lua scripting
+  context never offers `socket.core` or `mime.core`;
+- `waterbox/list-sources.py` leaves out `Core/Netplay`,
+  `Utilities/Socket.cpp` and luasocket's 19 files in `Lua/` (434 files
+  became 409).
+
+Measured: before, `core.wbx` held the C library's `socket`, `connect`,
+`bind`, `listen`, `accept`, `send`, `recv`, `getaddrinfo` and more, and
+`GameServer`, `GameClient`, `luaopen_socket_core`; after, none of them.
+(`poll` is still linked: the C library uses it for files at start-up; it is
+not a network call.) A new check, `build:no-network`
+(`waterbox/tests/check-no-network.sh`, run by `run-gate.sh`), looks for
+those symbols. Seen to fail on the previous build's `core.wbx` (taken out of
+the old package): it named 23 socket functions and the netplay and luasocket
+symbols. Every other check passes unchanged: `run-gate.sh` 33 ok with
+`CHIMERA_ROOT`, `run-frontend.sh` 5 ok, `test-packages` 21 PASS.
+
 ## Where this stands (2026-10-31)
 
 Works, and is tested here on Linux:
@@ -380,10 +430,5 @@ Traps, for whoever continues (each one cost time here):
 
 ## Questions for the owner
 
-- Which fork: MesenCE (recommended, chosen) or the archived Mesen2.
-- This repository's own licence: GPL-3.0, Mesen's own, because the adapter
-  carries Mesen's default palette table and the patches are Mesen's code.
-  Other cores' adapters are MIT; this one cannot be.
-- Mesen's library contains netplay (`Core/Netplay`) and luasocket in its Lua.
-  Both are compiled in and never called; the sandbox has no network calls
-  to give them. Patching them out is possible (a build option each).
+The three questions of the first round (the fork, the licence, the network
+code) were answered on 2026-10-31; see "the owner's decisions" above.

@@ -13,7 +13,7 @@ step; `docs/PLAN.md` the reasons and the state of the work.
 - `patches/` - every change to upstream, numbered, each a build option off
   in Mesen's own build (single thread, a random sequence of our own, a hook
   at each read of the controls, bare file names, saved games kept by the
-  host). `patches/series-marker` names the string the last patch adds.
+  host, no network code). `patches/series-marker` names the string the last patch adds.
 - `meson.build` - one build, two flavors: native (`run-native`, `run-wbx`)
   and guest (`core.wbx`, through the cross file `waterbox/setup-guest.sh`
   writes).
@@ -37,10 +37,10 @@ MB=<chimera>/extern/chimera-common-minibox     # built with -Dguest_cpp=true in 
 git submodule update --init
 meson setup build/meson-native -Dminibox_dir="$MB" && ninja -C build/meson-native -j4
 sh waterbox/setup-guest.sh -m "$MB" && ninja -C build/meson-guest -j4
-./waterbox/run-gate.sh                                   # 28 ok, 0 failed, the engine checks skipped
+./waterbox/run-gate.sh                                   # 29 ok, 0 failed, the engine checks skipped
 ./waterbox/build-package.sh -m "$MB" -o build/Cores
 <chimera>/build/meson-linux/source/ui/test-packages build/Cores
-CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 32 ok, 0 failed
+CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 33 ok, 0 failed
 ./waterbox/tests/run-frontend.sh --chimera-root <chimera> [--qt-lib <Qt lib folder>]   # 5 ok
 python3 <chimera>/tools/check-core-texts.py .            # every key named
 ```
@@ -60,7 +60,8 @@ stale binaries (it happened here once: the sandbox was one build behind).
   commit.
 - No commercial game, BIOS or firmware in the repository; the real YMF288
   rhythm ROM is never committed. No BizHawk material of any kind.
-- Never add network access.
+- Never add network access. Mesen's netplay and luasocket are left out of the build
+  (patch 0006); `build:no-network` in `run-gate.sh` checks `core.wbx`.
 - Do not write `version` or `versionDate` into `waterbox.config`.
 - Every text a person reads is a key of `waterbox/languages/en.json`, and
   every language file has every key.

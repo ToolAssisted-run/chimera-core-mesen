@@ -35,7 +35,7 @@ Two placeholders are used throughout:
   (`<chimera>/tools/ci-chimera.sh`, which puts Qt 6.12 in `~/qt` unless told
   otherwise).
 
-Mesen is large (434 source files). A build of one flavor takes a few
+Mesen is large (409 source files). A build of one flavor takes a few
 minutes at `-j4`; compile with a memory cap on a shared machine.
 
 ## Sources
@@ -109,14 +109,14 @@ differ.
 ```
 
 It needs `run-native`, `run-wbx` and `core.wbx` built, and builds nothing.
-It ends with `<n> ok, <m> failed`; without Chimera it is 28 checks and one
+It ends with `<n> ok, <m> failed`; without Chimera it is 29 checks and one
 line saying the checks through Chimera's engine were skipped. With
 
 ```
 CHIMERA_ROOT=<chimera> MESEN_PACKAGE=<the package> ./waterbox/run-gate.sh
 ```
 
-four more run through `<chimera>/build/dll/chimera-run`: 32 checks.
+four more run through `<chimera>/build/dll/chimera-run`: 33 checks.
 `docs/PLAN.md` says what each check compares and how each was seen to
 fail.
 

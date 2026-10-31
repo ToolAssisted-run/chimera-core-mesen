@@ -1,0 +1,170 @@
+Build option MESEN_NO_NETWORK: Mesen without its network code.
+
+Mesen's library holds netplay (Core/Netplay, over Utilities/Socket) and
+luasocket inside its Lua. With this option the Emulator makes no game server
+or client, nothing asks whether netplay is connected (it never is), and the
+Lua scripting context never offers socket.core or mime.core. The build then
+leaves out Core/Netplay, Utilities/Socket.cpp and luasocket's sources
+(waterbox/list-sources.py), so no network code is linked at all.
+
+--- a/Core/Shared/Emulator.h
++++ b/Core/Shared/Emulator.h
+@@ -93,8 +93,10 @@
+ 	const unique_ptr<MovieManager> _movieManager;
+ 	const unique_ptr<HistoryViewer> _historyViewer;
+ 
++#ifndef MESEN_NO_NETWORK
+ 	const shared_ptr<GameServer> _gameServer;
+ 	const shared_ptr<GameClient> _gameClient;
++#endif
+ 	const shared_ptr<RewindManager> _rewindManager;
+ 
+ 	thread_local static thread::id _currentThreadId;
+@@ -240,8 +242,10 @@
+ 	CheatManager* GetCheatManager() { return _cheatManager.get(); }
+ 	MovieManager* GetMovieManager() { return _movieManager.get(); }
+ 	HistoryViewer* GetHistoryViewer() { return _historyViewer.get(); }
++#ifndef MESEN_NO_NETWORK
+ 	GameServer* GetGameServer() { return _gameServer.get(); }
+ 	GameClient* GetGameClient() { return _gameClient.get(); }
++#endif
+ 	shared_ptr<SystemActionManager> GetSystemActionManager() { return _systemActionManager; }
+ 
+ 	BaseVideoFilter* GetVideoFilter(bool getDefaultFilter = false);
+--- a/Core/Shared/Emulator.cpp
++++ b/Core/Shared/Emulator.cpp
+@@ -22,8 +22,10 @@
+ #include "Shared/SystemActionManager.h"
+ #include "Shared/TimingInfo.h"
+ #include "Shared/HistoryViewer.h"
++#ifndef MESEN_NO_NETWORK
+ #include "Netplay/GameServer.h"
+ #include "Netplay/GameClient.h"
++#endif
+ #include "Shared/Interfaces/IConsole.h"
+ #include "Shared/Interfaces/IBarcodeReader.h"
+ #include "Shared/Interfaces/ITapeRecorder.h"
+@@ -60,8 +62,10 @@
+ 	  _cheatManager(new CheatManager(this)),
+ 	  _movieManager(new MovieManager(this)),
+ 	  _historyViewer(new HistoryViewer(this)),
++#ifndef MESEN_NO_NETWORK
+ 	  _gameServer(new GameServer(this)),
+ 	  _gameClient(new GameClient(this)),
++#endif
+ 	  _rewindManager(new RewindManager(this)),
+ 	  _stats(new DebugStats())
+ {
+@@ -125,8 +129,10 @@
+ {
+ 	Stop(true);
+ 
++#ifndef MESEN_NO_NETWORK
+ 	_gameClient->Disconnect();
+ 	_gameServer->StopServer();
++#endif
+ 
+ 	_videoDecoder->StopThread();
+ 	_videoRenderer->StopThread();
+--- a/Core/NES/NesConsole.cpp
++++ b/Core/NES/NesConsole.cpp
+@@ -32,7 +32,9 @@
+ #include "Shared/BaseControlManager.h"
+ #include "Shared/EmuSettings.h"
+ #include "Shared/NotificationManager.h"
++#ifndef MESEN_NO_NETWORK
+ #include "Netplay/GameClient.h"
++#endif
+ #include "Debugger/DebugTypes.h"
+ #include "Utilities/Serializer.h"
+ #include "Utilities/sha1.h"
+@@ -438,7 +440,12 @@
+ ShortcutState NesConsole::IsShortcutAllowed(EmulatorShortcut shortcut, uint32_t shortcutParam)
+ {
+ 	bool isRunning = _emu->IsRunning();
++#ifdef MESEN_NO_NETWORK
++	//built without netplay: never a netplay client
++	bool isNetplayClient = false;
++#else
+ 	bool isNetplayClient = _emu->GetGameClient()->Connected();
++#endif
+ 	bool isMoviePlaying = _emu->GetMovieManager()->Playing();
+ 	RomFormat romFormat = GetRomFormat();
+ 
+--- a/Core/Shared/ShortcutKeyHandler.cpp
++++ b/Core/Shared/ShortcutKeyHandler.cpp
+@@ -12,7 +12,9 @@
+ #include "Shared/BaseControlManager.h"
+ #include "Shared/Interfaces/IBarcodeReader.h"
+ #include "Shared/Interfaces/ITapeRecorder.h"
++#ifndef MESEN_NO_NETWORK
+ #include "Netplay/GameClient.h"
++#endif
+ 
+ ShortcutKeyHandler::ShortcutKeyHandler(Emulator* emu)
+ {
+@@ -122,7 +124,12 @@
+ bool ShortcutKeyHandler::IsShortcutAllowed(EmulatorShortcut shortcut, uint32_t shortcutParam)
+ {
+ 	bool isRunning = _emu->IsRunning();
++#ifdef MESEN_NO_NETWORK
++	//built without netplay: never a netplay client
++	bool isNetplayClient = false;
++#else
+ 	bool isNetplayClient = _emu->GetGameClient()->Connected();
++#endif
+ 	bool isMoviePlaying = _emu->GetMovieManager()->Playing();
+ 	bool isMovieRecording = _emu->GetMovieManager()->Recording();
+ 	bool isMovieActive = isMoviePlaying || isMovieRecording;
+--- a/Core/Shared/SaveStateManager.cpp
++++ b/Core/Shared/SaveStateManager.cpp
+@@ -11,7 +11,9 @@
+ #include "Shared/RenderedFrame.h"
+ #include "Shared/EventType.h"
+ #include "Debugger/Debugger.h"
++#ifndef MESEN_NO_NETWORK
+ #include "Netplay/GameClient.h"
++#endif
+ #include "Shared/Video/VideoDecoder.h"
+ #include "Shared/Video/VideoRenderer.h"
+ #include "Shared/Video/BaseVideoFilter.h"
+@@ -157,9 +159,11 @@
+ 	if(!_emu->IsRunning()) {
+ 		//Can't load a state if no game is running
+ 		return false;
++#ifndef MESEN_NO_NETWORK
+ 	} else if(_emu->GetGameClient()->Connected()) {
+ 		MessageManager::DisplayMessage("Netplay", "NetplayNotAllowed");
+ 		return false;
++#endif
+ 	}
+ 
+ 	char header[3];
+--- a/Core/Debugger/ScriptingContext.cpp
++++ b/Core/Debugger/ScriptingContext.cpp
+@@ -2,7 +2,9 @@
+ #include <algorithm>
+ #include <regex>
+ #include "Lua/lua.hpp"
++#ifndef MESEN_NO_NETWORK
+ #include "Lua/luasocket.hpp"
++#endif
+ #include "Debugger/ScriptingContext.h"
+ #include "Debugger/LuaApi.h"
+ #include "Debugger/LuaCallHelper.h"
+@@ -68,6 +70,7 @@
+ 	//Prevent lua code from loading any files
+ 	SANDBOX_ALLOW_LOADFILE = allowIoOsAccess ? 1 : 0;
+ 
++#ifndef MESEN_NO_NETWORK
+ 	//Load LuaSocket into Lua core
+ 	if(allowIoOsAccess && settings->GetDebugConfig().ScriptAllowNetworkAccess) {
+ 		lua_getglobal(_lua, "package");
+@@ -78,6 +81,7 @@
+ 		lua_setfield(_lua, -2, "mime.core");
+ 		lua_pop(_lua, 2);
+ 	}
++#endif
+ 
+ 	if(allowIoOsAccess) {
+ 		//Escape backslashes
