@@ -508,6 +508,83 @@ The owner accepted the second round's recommendations:
 Nothing changed in the core for these two: they keep what the second round
 built.
 
+## 2026-10-31: the Famicom's expansion port
+
+The Famicom has a socket on its front, the expansion port, where Japanese
+games' extra devices plug in. A new setting, `expansion` ("Expansion
+Port"), says what is in it:
+
+- **Nothing** (the default; a project made before has nothing there);
+- **the Famicom Zapper**: the Zapper made for that port. It answers on
+  $4017's bits 3 (light) and 4 (trigger), as the NES Zapper in port 2 does;
+- **the Famicom Arkanoid controller**: its button on bit 1 of $4016, its
+  knob's eight bits on bit 1 of $4017, inverted, highest bit first. Patch
+  0007 already makes its knob the frame's own input, as for port 2's;
+- **the four-player adapter** (Mesen's `FourPlayerAdapter`, Hori's): four
+  pads read on bit 1 of $4016 (players 1 and 3) and $4017 (2 and 4), then a
+  signature, as the Four Score does on bit 0, with the two signatures the
+  other way round.
+
+Mesen plugs the expansion port in whatever console it emulates; the core
+keeps Mesen's console type (an NES, `Nes001`) and does not switch to a
+Famicom's, so the reads' timing is the one every earlier check measured.
+
+The controls, added at the end of the wire so movies made before keep
+their columns: Expansion Trigger (T) and Expansion Fire (F), axes Expansion
+Zapper X and Y (0 to 65535 across the picture, as port 2's) and Expansion
+Paddle (0 to 160), headed EZX, EZY and EPad. They belong to the console's
+group of a movie entry (they are in no player's list): the port is the
+console's, and in player 2's group they would share the letters T and F
+with port 2's devices. The four-player adapter uses players 1 to 4's pads;
+with a pad also in a controller port, that pad and the adapter's first
+are one player, pressed together. `IsButtonActive` and `IsAxisActive` say
+which of the new controls the machine has. The mouse is bound to the new
+ones by default, as to port 2's. The texts (five new keys) are in all 26
+tables, with Famicom, Zapper and Arkanoid kept whole.
+
+The harness's input files gained `t`, `f`, `X=`, `Y=` and `k=` for the
+expansion port's trigger, button, Zapper place and knob.
+
+Checks:
+
+- `dev:famicomZapper`, `dev:famicomArkanoid`, `dev:fourPlayerAdapter`: as
+  for port 2's devices, on the input test cartridge: the same machine
+  natively, sandboxed and sandboxed with a save and a load around every
+  frame; the RAM shows the last frame's controls; a plain pad in their place
+  does not read the same.
+- `dev:famicomZapper-light`: pointed at the white half high it sees light
+  after 226 reads, low after 1135, never on the black half (the same counts
+  as port 2's Zapper); native == sandbox.
+- `engine:devices` now plays all six devices' schedules as Chimera movies.
+- `expansion:frontend` (`run-frontend.sh`): the four-player adapter in a
+  project opened in Chimera's window, P3 Right and P4 Start held through the
+  window, ends on the native reference's RAM, which is not the idle run's.
+
+Seen to fail, with the adapter broken on purpose in four places at once and
+rebuilt: the adapter's players 1 and 3 swapped (`dev:fourPlayerAdapter`);
+the Famicom Zapper's Y taken from its X (`dev:famicomZapper-light`: 1021
+reads high and low alike); the Famicom knob read from port 2's paddle
+(`dev:famicomArkanoid`: 0xa4, not 0x93); the expansion Zapper's axes said
+inactive (`engine:devices`). 42 ok, 4 failed; put back, 46 ok.
+
+For the window check, a first break was NOT caught: players 3 and 4 said
+inactive under the adapter. The window's Lua script presses buttons whether
+or not the core says they are there, so `expansion:frontend` proves the
+machine the window builds, not the list of active controls (which
+`engine:devices` proves). A second break, the expansion setting ignored in
+the guest only, was caught (5 ok, 1 failed). After both breaks the package
+was rebuilt and is byte for byte the one tested (SHA-1 89a2a7a5).
+
+Measured: `run-gate.sh` 46 ok with `CHIMERA_ROOT` (40 without),
+`run-frontend.sh` 6 ok, `test-packages` 21 PASS, `check-core-texts.py` 45
+keys, `check-names.py` 0 in 26 tables, `check-proper-nouns.py` 0.
+
+Not tried: any real game with these devices (none is in this repository;
+Japanese games that use them are commercial). Not offered yet: the
+two-player mode of the adapter, the Family BASIC keyboard and the other
+expansion devices Mesen has (Oeka Kids tablet, Family Trainer mat, Hyper
+Shot, Party Tap and more).
+
 ## Where this stands (2026-10-31, second round)
 
 Works, and is tested here on Linux against Chimera main cb46d2b7

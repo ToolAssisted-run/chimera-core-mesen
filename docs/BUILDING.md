@@ -109,7 +109,7 @@ differ.
 ```
 
 It needs `run-native`, `run-wbx` and `core.wbx` built, and builds nothing.
-It ends with `<n> ok, <m> failed`; without Chimera it is 36 checks and two
+It ends with `<n> ok, <m> failed`; without Chimera it is 40 checks and two
 lines saying the checks that need Chimera were skipped. With
 
 ```
@@ -117,7 +117,7 @@ CHIMERA_ROOT=<chimera> MESEN_PACKAGE=<the package> ./waterbox/run-gate.sh
 ```
 
 six more run: Chimera's own checks of the texts, and five through
-`<chimera>/build/dll/chimera-run`: 42 checks.
+`<chimera>/build/dll/chimera-run`: 46 checks.
 `docs/PLAN.md` says what each check compares and how each was seen to
 fail.
 
@@ -136,7 +136,7 @@ python3 <chimera>/tools/check-core-texts.py .
 
 It runs Chimera's window headless (no display) on projects it makes with
 `chimera-run --new-project`, and compares the console's RAM with the native
-reference's: 5 checks. Its files stay in `waterbox/tests/work/` (ignored by
+reference's: 6 checks. Its files stay in `waterbox/tests/work/` (ignored by
 git). `--qt-lib` is for a window built against a Qt the system does not
 know of, such as `~/qt/6.12.0/gcc_64/lib` after `tools/ci-chimera.sh`.
 

@@ -11,6 +11,9 @@
 #                      run of an input file holding the same, != idle
 #   settings:port1     port1=none, set in the project: the held buttons go
 #                      dead, and the machine still matches its native twin
+#   expansion:frontend the four-player adapter in the Famicom's expansion
+#                      port, players 3 and 4 held through the window == a
+#                      native run of an input file holding the same, != idle
 #   epsm:frontend      the EPSM test cartridge with the drums on and a
 #                      made-up rhythm ROM chosen in the window: RAM == native,
 #                      and the core's log says the EPSM and the ROM are there
@@ -154,6 +157,29 @@ elif cmp -s "$work/noport.ram.bin" "$work/hold.ram.bin"; then
 	report "settings:port1" FAIL "port1=none built the same machine as a plugged pad"
 else
 	report "settings:port1" PASS "port1=none in the project unplugged the pad; RAM == native"
+fi
+
+# --- the Famicom's expansion port: the four-player adapter, with players 3
+# and 4 held through the window, on this repository's input test cartridge
+# (which keeps what it reads from both ports in RAM) ---
+hold34="$work/hold34.inputs"
+python3 -I - "$hold34" "$frames" <<'PYIN'
+import sys
+open(sys.argv[1], "w").write("|..|........|........|...R....|....S...|\n" * int(sys.argv[2]))
+PYIN
+p="$(make_project exp input-test.nes '{"expansion":"fourPlayerAdapter"}')"
+if [ -z "$p" ]; then
+	report "expansion:frontend" FAIL "no project made (see tests/work/project.exp/make.log)"
+elif ! native_ram exp input-test.nes '{"expansion":"fourPlayerAdapter"}' "$hold34" || ! native_ram expidle input-test.nes '{"expansion":"fourPlayerAdapter"}' ""; then
+	report "expansion:frontend" FAIL "native runner error (see tests/work/native.exp.txt)"
+elif ! run_window exp "$p" "$work/window.json" "$frames" "P3 Right,P4 Start"; then
+	report "expansion:frontend" FAIL "the window did not report OK (see tests/work/exp.log)"
+elif ! cmp -s "$work/native.exp.ram.bin" "$work/exp.ram.bin"; then
+	report "expansion:frontend" FAIL "RAM with players 3 and 4 held differs from the native reference"
+elif cmp -s "$work/exp.ram.bin" "$work/native.expidle.ram.bin"; then
+	report "expansion:frontend" FAIL "holding players 3 and 4 changed nothing"
+else
+	report "expansion:frontend" PASS "the four-player adapter in the expansion port: P3 Right and P4 Start held in the window == the native input file holding them"
 fi
 
 # --- the EPSM, its drums on and a rhythm ROM chosen in the window ---

@@ -404,8 +404,9 @@ else
 fi
 
 # ---------------------------------------------------------------- input devices
-# The Four Score, the Zapper and the Arkanoid controller, on this
-# repository's input test cartridge (tests/input-test), which keeps what it
+# The Four Score, the Zapper and the Arkanoid controller, and the Famicom
+# expansion port's Zapper, Arkanoid controller and four-player adapter, on
+# this repository's input test cartridge (tests/input-test), which keeps what it
 # reads from both ports in its RAM. Each device's schedule moves every one
 # of its controls (waterbox/tests/input-devices.py). It must give the same
 # machine natively, sandboxed, and sandboxed with a save and a load around
@@ -441,29 +442,36 @@ device_leg() { # device settings
 device_leg fourScore '{"port1":"fourScore"}'
 device_leg zapper '{"port2":"zapper"}'
 device_leg arkanoid '{"port2":"arkanoid"}'
+device_leg famicomZapper '{"expansion":"famicomZapper"}'
+device_leg famicomArkanoid '{"expansion":"famicomArkanoid"}'
+device_leg fourPlayerAdapter '{"expansion":"fourPlayerAdapter"}'
 
 # Where the Zapper points: the cartridge's right half is white and its left
 # half black, so pointed right it sees light, sooner the higher it points,
-# and pointed left it sees none. Native == sandbox at each place.
-wd="$(workdir dev.light input-test.nes '{"port2":"zapper"}')"
-light=""
-lightSame=1
-for xy in "50000 8000" "50000 56000" "10000 32000"; do
-	set -- $xy
-	for i in $(seq 60); do echo "|..|........|@x=$1 y=$2|"; done > "$work/light.inputs"
-	"$rn" "$wd" --frames 60 --inputs "$work/light.inputs" --dump-domain RAM "$work/light.ram" > "$work/light.nat" 2>/dev/null
-	rw "$wd" --frames 60 --inputs "$work/light.inputs" 2>/dev/null > "$work/light.box"
-	cmp -s <(digests < "$work/light.nat") <(digests < "$work/light.box") || lightSame=0
-	light="$light$(python3 -I "$dev" light "$work/light.ram");"
-done
-IFS=';' read -r top bottom left _ <<< "$light"
-if [ "$lightSame" != 1 ]; then
-	report "dev:zapper-light" FAIL "native and sandbox differ"
-elif [ "${top%% *}" = 1 ] && [ "${bottom%% *}" = 1 ] && [ "${left%% *}" = 0 ] && [ "${top##* }" -lt "${bottom##* }" ]; then
-	report "dev:zapper-light" PASS "light seen high on the right after ${top##* } reads, low after ${bottom##* }, never on the left; native == sandbox"
-else
-	report "dev:zapper-light" FAIL "seen/reads: right high $top, right low $bottom, left $left"
-fi
+# and pointed left it sees none. Native == sandbox at each place. The same
+# for the Famicom Zapper on the expansion port, whose place is X= and Y=.
+light_leg() { # name settings xkey ykey
+	local name="$1" settings="$2" xk="$3" yk="$4" wd light="" lightSame=1 top bottom left
+	wd="$(workdir "dev.$name" input-test.nes "$settings")"
+	for xy in "50000 8000" "50000 56000" "10000 32000"; do
+		set -- $xy
+		for i in $(seq 60); do echo "|..|........|@$xk=$1 $yk=$2|"; done > "$work/light.inputs"
+		"$rn" "$wd" --frames 60 --inputs "$work/light.inputs" --dump-domain RAM "$work/light.ram" > "$work/light.nat" 2>/dev/null
+		rw "$wd" --frames 60 --inputs "$work/light.inputs" 2>/dev/null > "$work/light.box"
+		cmp -s <(digests < "$work/light.nat") <(digests < "$work/light.box") || lightSame=0
+		light="$light$(python3 -I "$dev" light "$work/light.ram");"
+	done
+	IFS=';' read -r top bottom left _ <<< "$light"
+	if [ "$lightSame" != 1 ]; then
+		report "dev:$name" FAIL "native and sandbox differ"
+	elif [ "${top%% *}" = 1 ] && [ "${bottom%% *}" = 1 ] && [ "${left%% *}" = 0 ] && [ "${top##* }" -lt "${bottom##* }" ]; then
+		report "dev:$name" PASS "light seen high on the right after ${top##* } reads, low after ${bottom##* }, never on the left; native == sandbox"
+	else
+		report "dev:$name" FAIL "seen/reads: right high $top, right low $bottom, left $left"
+	fi
+}
+light_leg zapper-light '{"port2":"zapper"}' x y
+light_leg famicomZapper-light '{"expansion":"famicomZapper"}' X Y
 
 # ---------------------------------------------------------------- the build
 # No network code in the guest (patches/0006, user-decided 2026-10-31).
@@ -594,7 +602,9 @@ PYMOV
 	# IsButtonActive and IsAxisActive), played in a project whose ports hold
 	# the device, ends on the native reference's RAM.
 	devfail=""
-	for ds in 'fourScore {"port1":"fourScore"}' 'zapper {"port2":"zapper"}' 'arkanoid {"port2":"arkanoid"}'; do
+	for ds in 'fourScore {"port1":"fourScore"}' 'zapper {"port2":"zapper"}' 'arkanoid {"port2":"arkanoid"}' \
+		'famicomZapper {"expansion":"famicomZapper"}' 'famicomArkanoid {"expansion":"famicomArkanoid"}' \
+		'fourPlayerAdapter {"expansion":"fourPlayerAdapter"}'; do
 		d="${ds%% *}"
 		python3 -I "$dev" movie "$d" "$work/$d.inputs" "$work/$d.movie.txt"
 		"$runner" --new-project "$work/dv.$d.chimeraProject" "$package" "$root/tests/roms/input-test.nes" "$work/$d.movie.txt" \
@@ -609,7 +619,7 @@ PYMOV
 		fi
 	done
 	if [ -z "$devfail" ]; then
-		report "engine:devices" PASS "the Four Score, Zapper and Arkanoid schedules as Chimera movies end on the native reference's RAM"
+		report "engine:devices" PASS "the six devices' schedules (Four Score, Zapper, Arkanoid; the expansion port's Zapper, Arkanoid, four-player adapter) as Chimera movies end on the native reference's RAM"
 	else
 		report "engine:devices" FAIL "$devfail"
 	fi

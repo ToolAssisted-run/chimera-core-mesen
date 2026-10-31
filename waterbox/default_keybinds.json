@@ -1,5 +1,5 @@
 {
-  "_comment": "Default bindings for the controller this package declares: the frontend uses them for a controller the user's setup has never seen, and Config > Controls' Defaults button comes back to them. Pad 1 is bound to keys and a gamepad; pads 2 to 4 are left unbound. The Zapper and the Arkanoid controller (port 2) follow the mouse: its place over the picture is where the Zapper points and where the knob is, its left button the trigger and the knob's button. Power and Reset are left unbound so that no key press restarts a run by accident.",
+  "_comment": "Default bindings for the controller this package declares: the frontend uses them for a controller the user's setup has never seen, and Config > Controls' Defaults button comes back to them. Pad 1 is bound to keys and a gamepad; pads 2 to 4 are left unbound. The Zapper and the Arkanoid controller (in port 2 or in the Famicom's expansion port) follow the mouse: its place over the picture is where the Zapper points and where the knob is, its left button the trigger and the knob's button. Power and Reset are left unbound so that no key press restarts a run by accident.",
   "AllTrollers": {
     "NES Controller": {
       "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
@@ -11,7 +11,9 @@
       "P1 B": "Z, J1 B1, X1 X",
       "P1 A": "X, J1 B2, X1 A",
       "P2 Trigger": "WMouse L",
-      "P2 Fire": "WMouse L"
+      "P2 Fire": "WMouse L",
+      "Expansion Trigger": "WMouse L",
+      "Expansion Fire": "WMouse L"
     }
   },
   "AllTrollersAutoFire": {
@@ -33,6 +35,21 @@
         "Deadzone": 0.0
       },
       "P2 Paddle": {
+        "Value": "WMouse X",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "Expansion Zapper X": {
+        "Value": "WMouse X",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "Expansion Zapper Y": {
+        "Value": "WMouse Y",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "Expansion Paddle": {
         "Value": "WMouse X",
         "Mult": 1.0,
         "Deadzone": 0.0

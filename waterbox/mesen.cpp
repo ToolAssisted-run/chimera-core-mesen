@@ -62,31 +62,42 @@ extern "C" const size_t mesen_nes_db_size;
 /* ---- the wire: waterbox.config "input.buttons" order ----
  * 0 Power, 1 Reset, then P1, P2, P3 and P4 x {A, B, Select, Start, Up,
  * Down, Left, Right} (quickerNES's order; P3 and P4 through the Four
- * Score), then 34 P2 Trigger (the Zapper's) and 35 P2 Fire (the Arkanoid
- * controller's). The declaration is the union of every device the ports
- * can hold; IsButtonActive says which of them this machine has.
+ * Score or the four-player adapter), then 34 P2 Trigger (the Zapper's) and
+ * 35 P2 Fire (the Arkanoid controller's), then 36 Expansion Trigger and 37
+ * Expansion Fire (the same two devices made for the Famicom's expansion
+ * port). The declaration is the union of every device the ports can hold;
+ * IsButtonActive says which of them this machine has. The order only
+ * grows, so a movie made before keeps its columns.
  *
  * Axes ("input.axes", SetAxis): 0 P2 Zapper X and 1 P2 Zapper Y (where the
  * Zapper points, 0..65535 across the picture's width and height), 2 P2
- * Paddle (the Arkanoid controller's knob, 0..160, as quickerNES's). */
+ * Paddle (the Arkanoid controller's knob, 0..160, as quickerNES's), then
+ * 3 Expansion Zapper X, 4 Expansion Zapper Y and 5 Expansion Paddle, the
+ * same for the expansion port's devices. */
 #define BTN_CONSOLE 2
 #define BTN_PER_PAD 8
 #define BTN_PADS 4
 #define BTN_TRIGGER (BTN_CONSOLE + BTN_PADS * BTN_PER_PAD)
 #define BTN_FIRE (BTN_TRIGGER + 1)
-#define BTN_COUNT (BTN_FIRE + 1)
+#define BTN_EXP_TRIGGER (BTN_FIRE + 1)
+#define BTN_EXP_FIRE (BTN_EXP_TRIGGER + 1)
+#define BTN_COUNT (BTN_EXP_FIRE + 1)
 static uint8_t g_buttons[BTN_COUNT];
 
 #define AXIS_ZAPPER_X 0
 #define AXIS_ZAPPER_Y 1
 #define AXIS_PADDLE 2
-#define AXIS_COUNT 3
-static int32_t g_axes[AXIS_COUNT] = { 32768, 32768, 80 };
+#define AXIS_EXP_ZAPPER_X 3
+#define AXIS_EXP_ZAPPER_Y 4
+#define AXIS_EXP_PADDLE 5
+#define AXIS_COUNT 6
+static int32_t g_axes[AXIS_COUNT] = { 32768, 32768, 80, 32768, 32768, 80 };
 
-/* what the ports hold (the settings port1 and port2) */
+/* what the ports hold (the settings port1, port2 and expansion) */
 enum { PORT1_GAMEPAD, PORT1_NONE, PORT1_FOUR_SCORE };
 enum { PORT2_NONE, PORT2_GAMEPAD, PORT2_ZAPPER, PORT2_ARKANOID };
-static int g_port1 = PORT1_GAMEPAD, g_port2 = PORT2_NONE;
+enum { EXP_NONE, EXP_ZAPPER, EXP_ARKANOID, EXP_FOUR_PLAYER };
+static int g_port1 = PORT1_GAMEPAD, g_port2 = PORT2_NONE, g_exp = EXP_NONE;
 
 /* wire column -> NesController::Buttons bit */
 static const uint8_t kColToBit[BTN_PER_PAD] = {
@@ -162,9 +173,12 @@ public:
 				return false;
 			set_pad(device, port);
 			return true;
-		case ControllerType::FourScore: {
+		case ControllerType::FourScore:
+		case ControllerType::FourPlayerAdapter: {
 			/* the Four Score's sub-ports are the four players: 0 and 2 are
-			 * read through $4016, 1 and 3 through $4017 */
+			 * read through $4016, 1 and 3 through $4017. The Famicom's
+			 * four-player adapter is the same on the expansion port's data
+			 * line (bit 1), with the two signatures the other way round. */
 			IControllerHub *hub = dynamic_cast<IControllerHub *>(device);
 			if (hub == nullptr)
 				return false;
@@ -176,23 +190,27 @@ public:
 			hub->RefreshHubState();
 			return true;
 		}
-		case ControllerType::NesZapper: {
+		case ControllerType::NesZapper:
+		case ControllerType::FamicomZapper: {
 			/* the Zapper's coordinates are the picture's pixels */
+			int exp = t == ControllerType::FamicomZapper;
 			MousePosition pos;
-			pos.X = (int16_t)((int64_t)g_axes[AXIS_ZAPPER_X] * 256 / 65536);
-			pos.Y = (int16_t)((int64_t)g_axes[AXIS_ZAPPER_Y] * 240 / 65536);
+			pos.X = (int16_t)((int64_t)g_axes[exp ? AXIS_EXP_ZAPPER_X : AXIS_ZAPPER_X] * 256 / 65536);
+			pos.Y = (int16_t)((int64_t)g_axes[exp ? AXIS_EXP_ZAPPER_Y : AXIS_ZAPPER_Y] * 240 / 65536);
 			device->SetCoordinates(pos);
-			device->SetBitValue(0, g_buttons[BTN_TRIGGER] != 0); /* Zapper::Fire */
+			device->SetBitValue(0, g_buttons[exp ? BTN_EXP_TRIGGER : BTN_TRIGGER] != 0); /* Zapper::Fire */
 			return true;
 		}
-		case ControllerType::NesArkanoidController: {
+		case ControllerType::NesArkanoidController:
+		case ControllerType::FamicomArkanoidController: {
 			/* the knob's position as an X coordinate (patch 0007) */
-			int32_t v = g_axes[AXIS_PADDLE];
+			int exp = t == ControllerType::FamicomArkanoidController;
+			int32_t v = g_axes[exp ? AXIS_EXP_PADDLE : AXIS_PADDLE];
 			MousePosition pos;
 			pos.X = (int16_t)(v < 0 ? 0 : v > 160 ? 160 : v);
 			pos.Y = 0;
 			device->SetCoordinates(pos);
-			device->SetBitValue(0, g_buttons[BTN_FIRE] != 0); /* ArkanoidController::Fire */
+			device->SetBitValue(0, g_buttons[exp ? BTN_EXP_FIRE : BTN_FIRE] != 0); /* ArkanoidController::Fire */
 			return true;
 		}
 		default:
@@ -287,8 +305,10 @@ static void read_ports(void)
 {
 	static const char *const opts1[] = { "gamepad", "none", "fourScore" };
 	static const char *const opts2[] = { "none", "gamepad", "zapper", "arkanoid" };
+	static const char *const optsExp[] = { "none", "famicomZapper", "famicomArkanoid", "fourPlayerAdapter" };
 	g_port1 = setting_choice("port1", opts1, 3, PORT1_GAMEPAD);
 	g_port2 = setting_choice("port2", opts2, 4, PORT2_NONE);
+	g_exp = setting_choice("expansion", optsExp, 4, EXP_NONE);
 }
 
 static void configure(EmuSettings *s)
@@ -332,6 +352,13 @@ static void configure(EmuSettings *s)
 		nes.Port1.Type = g_port1 == PORT1_GAMEPAD ? ControllerType::NesController : ControllerType::None;
 		nes.Port2.Type = port2Types[g_port2];
 	}
+	/* the Famicom's expansion port, beside the two controller ports (Mesen
+	 * plugs it in whatever console it emulates) */
+	static const ControllerType expTypes[] = { ControllerType::None, ControllerType::FamicomZapper,
+		ControllerType::FamicomArkanoidController, ControllerType::FourPlayerAdapter };
+	nes.ExpPort.Type = expTypes[g_exp];
+	for (int i = 0; i < 4; i++)
+		nes.ExpPortSubPorts[i].Type = g_exp == EXP_FOUR_PLAYER ? ControllerType::NesController : ControllerType::None;
 	nes.LightDetectionRadius = 0; /* Mesen's UI's default */
 	nes.AutoConfigureInput = false; /* the project's ports decide, not the database */
 	nes.EnableHdPacks = false;
@@ -567,20 +594,27 @@ ECL_EXPORT void SetAxis(int32_t index, int32_t value)
 ECL_EXPORT int IsButtonActive(int32_t index)
 {
 	int fourScore = g_port1 == PORT1_FOUR_SCORE;
+	/* the four-player adapter's players are players 1 to 4; with a pad in
+	 * a controller port as well, that pad and the adapter's are one player */
+	int adapter = g_exp == EXP_FOUR_PLAYER;
 	if (index < BTN_CONSOLE)
 		return index >= 0;
 	if (index < BTN_TRIGGER) {
 		int player = (index - BTN_CONSOLE) / BTN_PER_PAD;
 		switch (player) {
-		case 0: return g_port1 != PORT1_NONE;
-		case 1: return fourScore || g_port2 == PORT2_GAMEPAD;
-		default: return fourScore;
+		case 0: return g_port1 != PORT1_NONE || adapter;
+		case 1: return fourScore || g_port2 == PORT2_GAMEPAD || adapter;
+		default: return fourScore || adapter;
 		}
 	}
 	if (index == BTN_TRIGGER)
 		return !fourScore && g_port2 == PORT2_ZAPPER;
 	if (index == BTN_FIRE)
 		return !fourScore && g_port2 == PORT2_ARKANOID;
+	if (index == BTN_EXP_TRIGGER)
+		return g_exp == EXP_ZAPPER;
+	if (index == BTN_EXP_FIRE)
+		return g_exp == EXP_ARKANOID;
 	return 0;
 }
 
@@ -591,6 +625,10 @@ ECL_EXPORT int IsAxisActive(int32_t index)
 		return !fourScore && g_port2 == PORT2_ZAPPER;
 	if (index == AXIS_PADDLE)
 		return !fourScore && g_port2 == PORT2_ARKANOID;
+	if (index == AXIS_EXP_ZAPPER_X || index == AXIS_EXP_ZAPPER_Y)
+		return g_exp == EXP_ZAPPER;
+	if (index == AXIS_EXP_PADDLE)
+		return g_exp == EXP_ARKANOID;
 	return 0;
 }
 
