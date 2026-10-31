@@ -941,3 +941,26 @@ Open:
 - FamiStudio's export: still not run (refused by the permission system in
   rounds 3 and 4; the export folder was empty in round 5). Will the owner
   export the songs, or add a permission rule for the command?
+
+
+## Published without a real EPSM game (user-decided, 2026-10-31)
+
+The owner, on being told that the Sonic file has no EPSM code and that no
+game has played EPSM music here: "Just publish as if we succeeded. Let users
+steer it from now by issues." So the core is published now, and what was not
+proved is said plainly in the README and on the request (issue 410): the
+EPSM is proved on this repository's test program with the real rhythm ROM,
+and no game's EPSM music has been heard. Users who have EPSM games are asked
+to report what they find.
+
+The owner also accepted, the same day: the core does not open .zip game
+files (people unzip them; Chimera hashes the file it is given).
+
+Windows, run by the main session before publishing with the published
+Chimera for Windows (Development build cb46d2b7, chimera-run.exe): a project
+of Nova the Squirrel run 3000 frames, and a project of the EPSM test program
+with EPSM Drums on and the real rhythm ROM given as firmware run 600 frames
+("[mesen] EPSM rhythm ROM loaded"), each end on the same RAM as the same
+projects run by chimera-run on Linux (byte for byte). Sound was not compared
+on Windows.
+

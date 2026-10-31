@@ -18,7 +18,7 @@ each would take.
 ## Using it in Chimera
 
 Chimera ships no cores and downloads none. Build the package (below), or
-take it from this repository's releases once there are some, and put
+take it from this repository's releases, and put
 `mesen.chimeraCore` in Chimera's cores folder. Game files are not included.
 
 An EPSM game says so in its NES 2.0 header, and Mesen then plugs the EPSM
