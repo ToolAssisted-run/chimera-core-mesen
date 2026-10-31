@@ -37,10 +37,10 @@ MB=<chimera>/extern/chimera-common-minibox     # built with -Dguest_cpp=true in 
 git submodule update --init
 meson setup build/meson-native -Dminibox_dir="$MB" && ninja -C build/meson-native -j4
 sh waterbox/setup-guest.sh -m "$MB" && ninja -C build/meson-guest -j4
-./waterbox/run-gate.sh                                   # 27 ok, 0 failed, the engine checks skipped
+./waterbox/run-gate.sh                                   # 28 ok, 0 failed, the engine checks skipped
 ./waterbox/build-package.sh -m "$MB" -o build/Cores
 <chimera>/build/meson-linux/source/ui/test-packages build/Cores
-CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 31 ok, 0 failed
+CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 32 ok, 0 failed
 ./waterbox/tests/run-frontend.sh --chimera-root <chimera> [--qt-lib <Qt lib folder>]   # 5 ok
 python3 <chimera>/tools/check-core-texts.py .            # every key named
 ```

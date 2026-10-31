@@ -301,6 +301,23 @@ it is the RAM. Seen to fail: `ReadBus` with Mesen's ordinary `Read` (which
 has side effects: reading $2002 clears the vertical blank) changed the
 picture, the lag count and the memory.
 
+## 2026-10-31: more of the EPSM in the test program
+
+The test program now also writes SSG channel B through $4016 (OUT1's rising
+edge latches the high nibble and the port, its falling edge the low nibble
+and writes), and starts the chip's timer A with its IRQ; the IRQ handler
+counts in RAM $02 and acknowledges the timer. A third file,
+`epsm-no4016.nes`, is the same program with OUT1 held low, so its $4016
+writes never reach the chip. The APU's frame IRQ and the DMC's are turned
+off, so the only IRQ is the chip's (with the frame IRQ left on, the first
+version spent its time in an unacknowledged IRQ: every variant counted 238
+"IRQs", the EPSM-less one too).
+
+- `epsm:present` now also requires the timer's IRQs: 56 in 600 frames with
+  the EPSM, 0 without.
+- `epsm:4016`: channel B through $4016 changes the sound and not the
+  machine; with OUT1 low it is silent.
+
 ## Where this stands (2026-10-31)
 
 Works, and is tested here on Linux:
@@ -312,16 +329,17 @@ Works, and is tested here on Linux:
   out and across a power cycle; the system bus; the package, its contract tests, its texts
   in 26 languages; chimera-run (input polls, suggestions, firmware, a
   movie); Chimera's window (5 checks).
-- Commands and counts: `run-gate.sh` 27 ok (31 with `CHIMERA_ROOT`),
+- Commands and counts: `run-gate.sh` 28 ok (32 with `CHIMERA_ROOT`),
   `run-frontend.sh` 5 ok, `test-packages` 21 PASS, `check-core-texts.py`
   37 keys.
 
 Not done, or not proved:
 
 - **No real EPSM game has been run.** The EPSM is proved on this
-  repository's own test program (FM, SSG and rhythm writes through
-  $401C-$401F). The $4016 way of writing the chip, the chip's IRQ timers,
-  and a real game's music are untried. Needed from the owner: an EPSM game
+  repository's own test program: FM, SSG and rhythm writes through
+  $401C-$401F, SSG writes through $4016 (`epsm:4016`), and the chip's
+  timer A raising the CPU's IRQ (`epsm:present` counts 56 IRQs in 600
+  frames, none without the EPSM). A real game's music is untried. Needed from the owner: an EPSM game
   or demo that may be used for testing, and the real
   `ymf288_adpcm_rom.bin` (its SHA-1 can then be pinned in
   `waterbox.config`).

@@ -189,29 +189,49 @@ else
 fi
 
 # ---------------------------------------------------------------- the EPSM
-# The same program with and without the EPSM header: the machine (RAM,
-# picture) is the same, the sound is not, and only the EPSM one makes any.
+# The same program with and without the EPSM header: only the EPSM one makes
+# a sound, and only in it does the chip's timer reach the CPU (the program's
+# IRQ handler counts the chip's IRQs in RAM $02; the APU's IRQs are off).
 we="$work/epsm"
 wa="$(workdir epsm-absent epsm-absent.nes)"
-"$rn" "$we" --frames 600 --exercise --audio-out "$work/epsm.pcm" 2>"$work/ep.err" | digests > "$work/ep.nat"
+"$rn" "$we" --frames 600 --exercise --audio-out "$work/epsm.pcm" --dump-domain RAM "$work/ep.ram" 2>"$work/ep.err" | digests > "$work/ep.nat"
 rw "$we" --frames 600 --exercise 2>"$work/ep.box.err" | digests > "$work/ep.box"
-"$rn" "$wa" --frames 600 --exercise --audio-out "$work/absent.pcm" 2>"$work/ea.err" | digests > "$work/ea.nat"
+"$rn" "$wa" --frames 600 --exercise --audio-out "$work/absent.pcm" --dump-domain RAM "$work/ea.ram" 2>"$work/ea.err" | digests > "$work/ea.nat"
 rw "$wa" --frames 600 --exercise 2>"$work/ea.box.err" | digests > "$work/ea.box"
 loud() { python3 -I "$here/tests/audio-stats.py" "$1" | sed -n 's/.* rms=\([0-9.]*\).*/\1/p'; }
+irqs() { od -An -tu1 -j2 -N1 "$1" | tr -d ' '; }
 rms_p="$(loud "$work/epsm.pcm")"
 rms_a="$(loud "$work/absent.pcm")"
+irq_p="$(irqs "$work/ep.ram")"
+irq_a="$(irqs "$work/ea.ram")"
 if ! grep -q '^\[mesen\] EPSM present' "$work/ep.err" || ! grep -q '^\[mesen\] EPSM present' "$work/ep.box.err"; then
 	report "epsm:present" FAIL "the EPSM header did not plug the EPSM in, in both flavors"
 elif ! grep -q '^\[mesen\] EPSM absent' "$work/ea.err" || ! grep -q '^\[mesen\] EPSM absent' "$work/ea.box.err"; then
 	report "epsm:present" FAIL "a plain header plugged the EPSM in"
 elif ! cmp -s "$work/ea.nat" "$work/ea.box"; then
 	report "epsm:present" FAIL "without the EPSM, native and sandbox differ"
-elif [ "$(grep '^domain\[RAM\]' "$work/ep.box")" != "$(grep '^domain\[RAM\]' "$work/ea.box")" ]; then
-	report "epsm:present" FAIL "the EPSM changed the machine's RAM: the test program does not read it"
-elif awk -v a="${rms_a:-x}" -v p="${rms_p:-0}" 'BEGIN { exit !(a == 0 && p > 1000) }'; then
-	report "epsm:present" PASS "the EPSM header plays FM and SSG (RMS $rms_p); the plain header is silent (RMS $rms_a)"
-else
+elif ! awk -v a="${rms_a:-x}" -v p="${rms_p:-0}" 'BEGIN { exit !(a == 0 && p > 1000) }'; then
 	report "epsm:present" FAIL "sound RMS with the EPSM $rms_p, without $rms_a"
+elif [ "${irq_a:-x}" != 0 ] || [ "${irq_p:-0}" -lt 1 ]; then
+	report "epsm:present" FAIL "the chip's timer IRQs counted: $irq_p with the EPSM, $irq_a without"
+else
+	report "epsm:present" PASS "the EPSM header plays FM and SSG (RMS $rms_p, silent without); its timer raised $irq_p IRQs (0 without)"
+fi
+
+# The EPSM's other way in, through $4016 (OUT1's edges): the program writes
+# SSG channel B that way. The control is the same program with OUT1 held
+# low, which never reaches the chip: the sound must differ, the machine not.
+w4="$(workdir epsm-no4016 epsm-no4016.nes)"
+"$rn" "$w4" --frames 600 --exercise 2>/dev/null | digests > "$work/e4.nat"
+rw "$w4" --frames 600 --exercise 2>/dev/null | digests > "$work/e4.box"
+if ! cmp -s "$work/e4.nat" "$work/e4.box"; then
+	report "epsm:4016" FAIL "native and sandbox differ"
+elif [ "$(grep '^audioHash' "$work/e4.box")" = "$(grep '^audioHash' "$work/ep.box")" ]; then
+	report "epsm:4016" FAIL "the writes through \$4016 changed nothing: they did not reach the chip"
+elif [ "$(grep '^domain\[RAM\]' "$work/e4.box")" != "$(grep '^domain\[RAM\]' "$work/ep.box")" ]; then
+	report "epsm:4016" FAIL "OUT1 held low changed the machine, not only the sound"
+else
+	report "epsm:4016" PASS "SSG channel B written through \$4016 sounds; with OUT1 held low it does not"
 fi
 
 # The rhythm ROM: a made-up 8 KiB file (the real one is Yamaha's and the user

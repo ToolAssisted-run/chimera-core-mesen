@@ -13,8 +13,10 @@ All of these may be distributed. None is a commercial game.
   No licence is stated (the repository had no licence file when the
   quickerNES core took it, 2026-10-13); it is here as its author published
   it, for free download, and not under this repository's licence.
-- `epsm-test.nes`, `epsm-absent.nes` - this repository's own EPSM test
-  program, built by `tests/epsm-test/make-epsm-test.py`. The two files differ
-  only in their header: the first says it has the EPSM.
+- `epsm-test.nes`, `epsm-absent.nes`, `epsm-no4016.nes` - this
+  repository's own EPSM test program, built by
+  `tests/epsm-test/make-epsm-test.py`. The first two differ only in their
+  header (the first says it has the EPSM); the third has the EPSM header and
+  its writes through $4016 never reach the chip.
 
 The input schedules in `tests/inputs/` were written for this repository.

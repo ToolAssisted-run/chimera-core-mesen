@@ -4,16 +4,23 @@ that plays the EPSM's three kinds of sound and lets the first pad change them.
 
 Usage: make-epsm-test.py <out dir>
 
-Writes two files that differ only in their header:
+Writes three files:
     epsm-test.nes     NES 2.0 header saying "a console with the EPSM"
                       (byte 7 console type 3, byte 13 extended type 4), so
                       Mesen plugs the EPSM in;
-    epsm-absent.nes   the same program with a plain NES 2.0 header.
+    epsm-absent.nes   the same program with a plain NES 2.0 header;
+    epsm-no4016.nes   the EPSM header, and the program's writes through
+                      $4016 made with OUT1 held low, so they never reach the
+                      chip (the control for the $4016 way of writing it).
 
 What the program does, after the two vertical blanks a console needs to
 settle:
   - the SSG (the YMF288's three square-wave channels): channel A at a
-    steady tone;
+    steady tone, written through $401C/$401D; channel B at another, written
+    through $4016 (the EPSM's other way in: OUT1's rising edge latches the
+    high nibble and the port, its falling edge the low nibble and writes);
+  - the chip's timer A, raising the CPU's IRQ; the IRQ handler counts in
+    RAM $02 and acknowledges the timer, so the chip reaches the machine;
   - FM channel 1: one carrier operator holding a note;
   - the rhythm part (ADPCM-A): a bass drum struck every 32 frames, and a
     snare every 64. Its sounds come from the chip's own rhythm ROM, which
@@ -36,7 +43,7 @@ import sys
 # ---------------------------------------------------------------- assembler
 OPS = {
     # name: {mode: opcode}
-    "SEI": {"imp": 0x78}, "CLD": {"imp": 0xD8}, "TXS": {"imp": 0x9A},
+    "SEI": {"imp": 0x78}, "CLI": {"imp": 0x58}, "CLD": {"imp": 0xD8}, "TXS": {"imp": 0x9A},
     "RTI": {"imp": 0x40}, "PHA": {"imp": 0x48}, "PLA": {"imp": 0x68},
     "TXA": {"imp": 0x8A}, "TAX": {"imp": 0xAA}, "TYA": {"imp": 0x98},
     "TAY": {"imp": 0xA8}, "INX": {"imp": 0xE8}, "DEX": {"imp": 0xCA},
@@ -126,7 +133,26 @@ def opn(a, reg, value, part=0):
     a.op("STA", "abs", base + 1)
 
 
-def program():
+def opn4016(a, port, value, live):
+    """one byte to the EPSM through $4016: port 0 = address, 1 = data (first
+    half). Two writes: OUT1 (bit 1) high with the high nibble and the port in
+    bits 2-3, then OUT1 low with the low nibble. With live False OUT1 never
+    rises and the chip is not written."""
+    out1 = 0x02 if live else 0x00
+    first = (value & 0xF0) | out1 | ((port >> 1) & 1) << 2 | (port & 1) << 3
+    second = (value & 0x0F) << 4
+    a.op("LDA", "imm", first)
+    a.op("STA", "abs", 0x4016)
+    a.op("LDA", "imm", second)
+    a.op("STA", "abs", 0x4016)
+
+
+def opn_via_4016(a, reg, value, live):
+    opn4016(a, 0, reg, live)
+    opn4016(a, 1, value, live)
+
+
+def program(live4016=True):
     a = Asm(0xC000)
     a.label("reset")
     a.op("SEI")
@@ -136,6 +162,10 @@ def program():
     a.op("LDA", "imm", 0x00)
     a.op("STA", "abs", 0x2000)  # NMI off while setting up
     a.op("STA", "abs", 0x2001)  # rendering off
+    a.op("LDA", "imm", 0x40)
+    a.op("STA", "abs", 0x4017)  # the APU's frame IRQ off: the only IRQ is the chip's
+    a.op("LDA", "imm", 0x00)
+    a.op("STA", "abs", 0x4010)  # and the DMC's off
     for wait in ("vb1", "vb2"):
         a.label(wait)
         a.op("BIT", "abs", 0x2002)
@@ -147,8 +177,12 @@ def program():
     # SSG channel A: a steady tone
     opn(a, 0x00, 0xFE)
     opn(a, 0x01, 0x00)
-    opn(a, 0x07, 0x3E)  # tone A on, everything else off (active low)
+    opn(a, 0x07, 0x3C)  # tones A and B on, everything else off (active low)
     opn(a, 0x08, 0x0C)  # channel A volume
+    # SSG channel B through $4016
+    opn_via_4016(a, 0x02, 0x80, live4016)
+    opn_via_4016(a, 0x03, 0x01, live4016)
+    opn_via_4016(a, 0x09, 0x0A, live4016)
     # FM channel 1: algorithm 7, only operator 1 sounding
     opn(a, 0xB0, 0x07)
     opn(a, 0xB4, 0xC0)
@@ -171,6 +205,13 @@ def program():
     for reg in range(0x18, 0x1E):
         opn(a, reg, 0xDF)
 
+    # timer A: period, then load it with its IRQ enabled
+    opn(a, 0x24, 0x80)
+    opn(a, 0x25, 0x00)
+    opn(a, 0x27, 0x05)
+    a.op("LDA", "imm", 0)
+    a.op("STA", "zp", 0x02)
+
     # backdrop colour, then NMI on and rendering on
     a.op("LDA", "imm", 0x3F)
     a.op("STA", "abs", 0x2006)
@@ -185,6 +226,7 @@ def program():
     a.op("STA", "abs", 0x2000)
     a.op("LDA", "imm", 0x0A)
     a.op("STA", "abs", 0x2001)
+    a.op("CLI")
     a.label("forever")
     a.op("JMP", "abs", "forever")
 
@@ -239,7 +281,16 @@ def program():
     a.op("PLA")
     a.op("RTI")
 
+    # IRQ: the chip's timer A. Count it, and acknowledge it (reset A's flag,
+    # keep the timer loaded with its IRQ enabled).
     a.label("irq")
+    a.op("PHA")
+    a.op("INC", "zp", 0x02)
+    a.op("LDA", "imm", 0x27)
+    a.op("STA", "abs", 0x401C)
+    a.op("LDA", "imm", 0x15)
+    a.op("STA", "abs", 0x401D)
+    a.op("PLA")
     a.op("RTI")
 
     code = a.assemble()
@@ -271,6 +322,8 @@ def main():
         f.write(header(True) + prg)
     with open(os.path.join(out, "epsm-absent.nes"), "wb") as f:
         f.write(header(False) + prg)
+    with open(os.path.join(out, "epsm-no4016.nes"), "wb") as f:
+        f.write(header(True) + program(live4016=False))
 
 
 if __name__ == "__main__":
