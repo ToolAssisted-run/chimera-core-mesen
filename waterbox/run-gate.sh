@@ -1,0 +1,307 @@
+#!/bin/bash
+# The core test script: the sandboxed core (core.wbx) must give the same
+# frames, picture, sound, lag count and memory as the native reference built
+# from the same sources, and must come back the same from a savestate.
+# Every check says what it compared; the last line counts them.
+#
+# Content: free homebrew in tests/roms (Nova the Squirrel, Sprilo) and the
+# EPSM test program this repository builds (tests/epsm-test). Input
+# schedules are our own (tests/inputs, or the harness's pad exercise).
+#
+# Usage: ./run-gate.sh [-n <native build dir>] [-g <guest build dir>]
+#   CHIMERA_ROOT=<a built Chimera checkout> and MESEN_PACKAGE=<the package>
+#   add the checks that run through Chimera's engine (chimera-run).
+set -u
+
+here="$(cd "$(dirname "$0")" && pwd)"
+root="$(cd "$here/.." && pwd)"
+nat="$root/build/meson-native"
+gst="$root/build/meson-guest"
+while getopts "n:g:" opt; do
+	case "$opt" in
+		n) nat="$OPTARG" ;;
+		g) gst="$OPTARG" ;;
+		*) exit 2 ;;
+	esac
+done
+
+[ -x "$nat/run-native" ] && [ -x "$nat/run-wbx" ] || {
+	echo "native build missing: meson setup build/meson-native -Dminibox_dir=<miniBox> && ninja -C build/meson-native" >&2; exit 1; }
+[ -f "$gst/core.wbx" ] || {
+	echo "guest build missing: sh waterbox/setup-guest.sh -m <miniBox> && ninja -C build/meson-guest" >&2; exit 1; }
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+rn="$nat/run-native"
+rw() { "$nat/run-wbx" "$gst/core.wbx" "$@"; }
+digests() { grep -E '^(frames|vsync|videoHash|audioHash|audioSamples|lagFrames|domain\[)'; }
+# what a turbo run can be held to: everything but the whole-run video hash
+turboDigests() { grep -E '^(frames|vsync|tailVideoHash|audioHash|audioSamples|lagFrames|domain\[)'; }
+# what a run that started from a state can be held to: the machine at the end
+finalDigests() { grep -E '^(lastFrameHash|domain\[)'; }
+
+ok=0
+failed=0
+report() { printf "%-26s %-6s %s\n" "$1" "$2" "$3"; case "$2" in PASS) ok=$((ok+1)) ;; SKIP) ;; *) failed=$((failed+1)) ;; esac; }
+printf "%-26s %-6s %s\n" "Check" "Result" "Detail"
+printf "%-26s %-6s %s\n" "-----" "------" "------"
+short() { tr '\n' ' ' | head -c 140; }
+
+# a work dir holding a cartridge as a project mounts it: the file under its
+# name, the slot map, and the settings ($3, JSON; may be empty)
+workdir() { # name rom settings
+	local wd="$work/$1"
+	rm -rf "$wd" && mkdir -p "$wd"
+	cp "$root/tests/roms/$2" "$wd/"
+	printf '{"rom":["%s"]}' "$2" > "$wd/slots"
+	[ -n "${3:-}" ] && printf '%s' "$3" > "$wd/settings"
+	echo "$wd"
+}
+
+# ---------------------------------------------------------------- the machine
+# name rom schedule(file in tests/inputs, or "exercise:N" frames)
+tests=(
+	"nova nova.nes nova.inputs"
+	"sprilo sprilo.nes exercise:1200"
+	"epsm epsm-test.nes exercise:600"
+)
+for t in "${tests[@]}"; do
+	read -r name rom sched <<< "$t"
+	wd="$(workdir "$name" "$rom")"
+	case "$sched" in
+		exercise:*) args=(--frames "${sched#exercise:}" --exercise) ;;
+		*) args=(--inputs "$root/tests/inputs/$sched") ;;
+	esac
+	echo "${args[*]}" > "$work/$name.args"
+
+	if ! "$rn" "$wd" "${args[@]}" 2>"$work/err" | digests > "$work/$name.nat"; then
+		report "$name:equivalence" FAIL "native runner error: $(head -1 "$work/err")"; continue
+	fi
+	if ! rw "$wd" "${args[@]}" 2>"$work/err" > "$work/$name.raw"; then
+		report "$name:equivalence" FAIL "sandbox runner error: $(grep -v '^\[mesen\]' "$work/err" | head -1)"; continue
+	fi
+	digests < "$work/$name.raw" > "$work/$name.box"
+	frames="$(sed -n 's/^frames=//p' "$work/$name.box")"
+	# a run that reported no frame compared nothing (gates.md, C)
+	if [ -z "$frames" ] || [ "$frames" = 0 ]; then
+		report "$name:equivalence" FAIL "the sandbox reported no frame"; continue
+	fi
+	if cmp -s "$work/$name.nat" "$work/$name.box"; then
+		report "$name:equivalence" PASS "$frames frames, native == sandbox (picture, sound, lag, every domain)"
+	else
+		report "$name:equivalence" FAIL "$(diff "$work/$name.nat" "$work/$name.box" | short)"
+		continue
+	fi
+
+	# the schedule must have shaped the machine: an idle run of the same length differs
+	rw "$wd" --frames "$frames" 2>/dev/null | digests > "$work/$name.idle"
+	if cmp -s "$work/$name.box" "$work/$name.idle"; then
+		report "$name:input-shaped" FAIL "the input schedule changed nothing"
+	else
+		report "$name:input-shaped" PASS "an idle run of $frames frames is another machine"
+	fi
+
+	# a save and a load around every frame change nothing
+	if rw "$wd" "${args[@]}" --rerecord 2>/dev/null | digests > "$work/$name.rr" && cmp -s "$work/$name.box" "$work/$name.rr"; then
+		report "$name:savestate" PASS "a save and a load around each of $frames frames change nothing"
+	else
+		report "$name:savestate" FAIL "$(diff "$work/$name.box" "$work/$name.rr" | short)"
+	fi
+
+	# turbo: no picture for the first half; the machine, the sound and the
+	# second half's pictures are the same, and the first half really went
+	# undrawn (the whole-run picture hash differs)
+	turboDigests < "$work/$name.raw" > "$work/$name.tn"
+	if rw "$wd" "${args[@]}" --turbo 2>/dev/null > "$work/$name.traw"; then
+		turboDigests < "$work/$name.traw" > "$work/$name.tt"
+		nvh="$(grep -m1 '^videoHash=' "$work/$name.raw")"
+		tvh="$(grep -m1 '^videoHash=' "$work/$name.traw")"
+		if ! cmp -s "$work/$name.tn" "$work/$name.tt"; then
+			report "$name:turbo" FAIL "$(diff "$work/$name.tn" "$work/$name.tt" | short)"
+		elif [ "$nvh" = "$tvh" ]; then
+			report "$name:turbo" FAIL "the turbo run drew every frame - nothing was skipped"
+		else
+			report "$name:turbo" PASS "half the frames undrawn; same machine, sound and later pictures"
+		fi
+	else
+		report "$name:turbo" FAIL "turbo runner error"
+	fi
+done
+
+# ---------------------------------------------------------------- savestates
+# Session: the machine saved half way by one process, loaded by another and
+# run to the end, is the machine of the straight run. The control loads the
+# same state as if it had been taken ten frames earlier, with the schedule
+# shifted: that must NOT land on the straight run.
+wd="$work/nova"
+read -r -a args < "$work/nova.args"
+half=1500
+finalDigests < "$work/nova.raw" > "$work/sess.straight"
+rw "$wd" "${args[@]}" --save-at "$half" "$work/nova.state" > "$work/sess.save" 2>/dev/null
+if ! grep -q "^savedAt=$half" "$work/sess.save"; then
+	report "nova:session" FAIL "no state was saved at frame $half"
+else
+	rw "$wd" "${args[@]}" --load-at "$half" "$work/nova.state" 2>/dev/null | finalDigests > "$work/sess.loaded"
+	rw "$wd" "${args[@]}" --load-at $((half - 10)) "$work/nova.state" 2>/dev/null | finalDigests > "$work/sess.shifted"
+	if [ ! -s "$work/sess.loaded" ]; then
+		report "nova:session" FAIL "the loading process reported nothing"
+	elif ! cmp -s "$work/sess.straight" "$work/sess.loaded"; then
+		report "nova:session" FAIL "$(diff "$work/sess.straight" "$work/sess.loaded" | short)"
+	elif cmp -s "$work/sess.straight" "$work/sess.shifted"; then
+		report "nova:session" FAIL "a state loaded on the wrong frame also matched: the check cannot fail"
+	else
+		report "nova:session" PASS "saved at $half by one process, loaded by another: the same machine at the end"
+	fi
+fi
+
+# ---------------------------------------------------------------- virtual time
+# The host stops for 300 ms half way, in both flavors; the machine does not
+# notice. The NES reads no clock and the frame limiter is built out, so this
+# proves nothing Mesen does between frames reads the host's time. The native
+# run is the one with teeth: its clock is the host's, where the sandbox's is
+# virtual and would hide a clock read.
+"$rn" "$wd" "${args[@]}" --stall 1500 300 2>/dev/null | digests > "$work/stall.nat"
+rw "$wd" "${args[@]}" --stall 1500 300 2>/dev/null | digests > "$work/stall.box"
+if ! cmp -s "$work/nova.nat" "$work/stall.nat"; then
+	report "time:stall" FAIL "native: $(diff "$work/nova.nat" "$work/stall.nat" | short)"
+elif ! cmp -s "$work/nova.box" "$work/stall.box"; then
+	report "time:stall" FAIL "sandbox: $(diff "$work/nova.box" "$work/stall.box" | short)"
+else
+	report "time:stall" PASS "a 300 ms stop of the host at frame 1500 changes nothing, native or sandboxed"
+fi
+
+# ---------------------------------------------------------------- the EPSM
+# The same program with and without the EPSM header: the machine (RAM,
+# picture) is the same, the sound is not, and only the EPSM one makes any.
+we="$work/epsm"
+wa="$(workdir epsm-absent epsm-absent.nes)"
+"$rn" "$we" --frames 600 --exercise --audio-out "$work/epsm.pcm" 2>"$work/ep.err" | digests > "$work/ep.nat"
+rw "$we" --frames 600 --exercise 2>"$work/ep.box.err" | digests > "$work/ep.box"
+"$rn" "$wa" --frames 600 --exercise --audio-out "$work/absent.pcm" 2>"$work/ea.err" | digests > "$work/ea.nat"
+rw "$wa" --frames 600 --exercise 2>"$work/ea.box.err" | digests > "$work/ea.box"
+loud() { python3 -I "$here/tests/audio-stats.py" "$1" | sed -n 's/.* rms=\([0-9.]*\).*/\1/p'; }
+rms_p="$(loud "$work/epsm.pcm")"
+rms_a="$(loud "$work/absent.pcm")"
+if ! grep -q '^\[mesen\] EPSM present' "$work/ep.err" || ! grep -q '^\[mesen\] EPSM present' "$work/ep.box.err"; then
+	report "epsm:present" FAIL "the EPSM header did not plug the EPSM in, in both flavors"
+elif ! grep -q '^\[mesen\] EPSM absent' "$work/ea.err" || ! grep -q '^\[mesen\] EPSM absent' "$work/ea.box.err"; then
+	report "epsm:present" FAIL "a plain header plugged the EPSM in"
+elif ! cmp -s "$work/ea.nat" "$work/ea.box"; then
+	report "epsm:present" FAIL "without the EPSM, native and sandbox differ"
+elif [ "$(grep '^domain\[RAM\]' "$work/ep.box")" != "$(grep '^domain\[RAM\]' "$work/ea.box")" ]; then
+	report "epsm:present" FAIL "the EPSM changed the machine's RAM: the test program does not read it"
+elif awk -v a="${rms_a:-x}" -v p="${rms_p:-0}" 'BEGIN { exit !(a == 0 && p > 1000) }'; then
+	report "epsm:present" PASS "the EPSM header plays FM and SSG (RMS $rms_p); the plain header is silent (RMS $rms_a)"
+else
+	report "epsm:present" FAIL "sound RMS with the EPSM $rms_p, without $rms_a"
+fi
+
+# The rhythm ROM: a made-up 8 KiB file (the real one is Yamaha's and the user
+# brings it) must reach the chip - the sound changes - and both flavors must
+# agree. A file of the wrong size is refused by Mesen, so it must leave the
+# sound as with no file at all: the check can fail.
+wf="$(workdir epsm-fw epsm-test.nes)"
+python3 -I - "$wf/ymf288_adpcm_rom.bin" 8192 <<'PYROM'
+import random, sys
+r = random.Random(410)
+open(sys.argv[1], "wb").write(bytes(r.randrange(256) for _ in range(int(sys.argv[2]))))
+PYROM
+"$rn" "$wf" --frames 600 --exercise 2>/dev/null | digests > "$work/fw.nat"
+rw "$wf" --frames 600 --exercise 2>/dev/null | digests > "$work/fw.box"
+python3 -I - "$wf/ymf288_adpcm_rom.bin" 4096 <<'PYROM'
+import random, sys
+r = random.Random(410)
+open(sys.argv[1], "wb").write(bytes(r.randrange(256) for _ in range(int(sys.argv[2]))))
+PYROM
+rw "$wf" --frames 600 --exercise 2>/dev/null | digests > "$work/fw.short"
+a_none="$(grep '^audioHash' "$work/ep.box")"
+if ! cmp -s "$work/fw.nat" "$work/fw.box"; then
+	report "epsm:firmware" FAIL "with the rhythm ROM, native and sandbox differ"
+elif [ "$(grep '^audioHash' "$work/fw.box")" = "$a_none" ]; then
+	report "epsm:firmware" FAIL "the rhythm ROM changed nothing: it did not reach the chip"
+elif [ "$(grep '^audioHash' "$work/fw.short")" != "$a_none" ]; then
+	report "epsm:firmware" FAIL "a 4 KiB file was taken as the rhythm ROM"
+else
+	report "epsm:firmware" PASS "an 8 KiB rhythm ROM reaches the drums in both flavors; a 4 KiB file is refused"
+fi
+
+# ---------------------------------------------------------------- settings
+setting_leg() { # tag settings baseline-settings rom frames extra-args...
+	# the result must match its native reference and differ from the baseline's
+	local tag="$1" settings="$2" base="$3" rom="$4" frames="$5"
+	shift 5
+	local wd
+	wd="$(workdir "set.$tag" "$rom" "$settings")"
+	"$rn" "$wd" --frames "$frames" "$@" 2>/dev/null | digests > "$work/s.nat"
+	rw "$wd" --frames "$frames" "$@" 2>/dev/null | digests > "$work/s.box"
+	printf '%s' "$base" > "$wd/settings"
+	rw "$wd" --frames "$frames" "$@" 2>/dev/null | digests > "$work/s.base"
+	if [ ! -s "$work/s.box" ]; then
+		report "settings:$tag" FAIL "the sandbox reported nothing"
+	elif ! cmp -s "$work/s.nat" "$work/s.box"; then
+		report "settings:$tag" FAIL "native and sandbox differ: $(diff "$work/s.nat" "$work/s.box" | short)"
+	elif cmp -s "$work/s.box" "$work/s.base"; then
+		report "settings:$tag" FAIL "$settings built the machine $base builds"
+	else
+		report "settings:$tag" PASS "$settings is another machine than $base; native == sandbox"
+	fi
+}
+setting_leg port1 '{"port1":"none"}' '{}' sprilo.nes 600 --exercise
+setting_leg region '{"region":"pal"}' '{}' sprilo.nes 300
+setting_leg ramOnes '{"ramPowerOnState":"ones"}' '{}' sprilo.nes 1
+setting_leg ramRandom '{"ramPowerOnState":"random"}' '{"ramPowerOnState":"ones"}' sprilo.nes 1
+setting_leg seed '{"ramPowerOnState":"random","randomSeed":7}' '{"ramPowerOnState":"random"}' sprilo.nes 1
+wd="$(workdir set.pal sprilo.nes '{"region":"pal"}')"
+v="$(rw "$wd" --frames 2 2>/dev/null | sed -n 's/^vsync=//p')"
+if [ "$v" = "322445/6448" ]; then
+	report "settings:region-rate" PASS "region=pal runs at 322445/6448 frames a second"
+else
+	report "settings:region-rate" FAIL "region=pal reported vsync $v"
+fi
+
+# ---------------------------------------------------------------- save data
+wd="$work/nova"
+mkdir -p "$work/sd.nat" "$work/sd.box"
+"$rn" "$wd" "${args[@]}" --savedata-out "$work/sd.nat" 2>/dev/null | grep '^savedataFiles' > "$work/sd.n"
+rw "$wd" "${args[@]}" --savedata-out "$work/sd.box" 2>/dev/null | grep '^savedataFiles' > "$work/sd.b"
+if [ "$(cat "$work/sd.b")" != "savedataFiles=1" ]; then
+	report "savedata:export" FAIL "Nova's battery RAM was not offered ($(cat "$work/sd.b"))"
+elif diff -r "$work/sd.nat" "$work/sd.box" > /dev/null; then
+	report "savedata:export" PASS "battery.sav, $(stat -c %s "$work/sd.box/battery.sav") bytes, native == sandbox"
+else
+	report "savedata:export" FAIL "the exported files differ"
+fi
+
+# ---------------------------------------------------------------- Chimera's engine
+# Each read of the controls reaches Chimera as it happens, so a Lua script's
+# event.oninputpoll runs there (chimera#344): every frame the game read them
+# has at least one, and counting them moves nothing.
+runner="${CHIMERA_ROOT:-}/build/dll/chimera-run"
+package="${MESEN_PACKAGE:-$root/build/Cores/mesen.chimeraCore}"
+if [ -n "${CHIMERA_ROOT:-}" ] && [ -x "$runner" ] && [ -f "$package" ]; then
+	cart="$root/tests/roms/sprilo.nes"
+	"$runner" --new-project "$work/none.chimeraProject" "$package" "$cart" > "$work/none.make.log" 2>&1
+	"$runner" --project "$work/none.chimeraProject" "$package" --files "$(dirname "$cart")" \
+		--frames 300 --record "$work/idle.txt" > "$work/idle.log" 2>&1
+	"$runner" --new-project "$work/idle.chimeraProject" "$package" "$cart" "$work/idle.txt" > "$work/idle.make.log" 2>&1
+	"$runner" --project "$work/idle.chimeraProject" "$package" --files "$(dirname "$cart")" \
+		--dump "RAM=$work/plain.ram" > "$work/plain.log" 2>&1
+	"$runner" --project "$work/idle.chimeraProject" "$package" --files "$(dirname "$cart")" --count-input-polls \
+		--dump "RAM=$work/polls.ram" --meta "$work/polls.meta" > "$work/polls.log" 2>&1
+	polls=$(sed -n 's/^inputPolls=//p' "$work/polls.meta" 2> /dev/null)
+	lags=$(sed -n 's/^lagFrames=//p' "$work/polls.meta" 2> /dev/null)
+	frames=$(sed -n 's/^frames=//p' "$work/polls.meta" 2> /dev/null)
+	if [ "${polls:-none}" != none ] && [ "${frames:-0}" = 300 ] && [ "${lags:-300}" -lt 300 ] \
+		&& [ "${polls:-0}" -ge $(( 300 - ${lags:-300} )) ] && [ -s "$work/plain.ram" ] && cmp -s "$work/plain.ram" "$work/polls.ram"; then
+		report "engine:input-polls" PASS "$polls reads of the pads in 300 frames, $lags lag frames; RAM is the run's without counting"
+	else
+		report "engine:input-polls" FAIL "inputPolls=${polls:-missing} frames=${frames:-?} lagFrames=${lags:-?}, or counting moved RAM; the runner said: $(tail -1 "$work/polls.log" 2> /dev/null)"
+	fi
+else
+	report "engine:input-polls" SKIP "needs CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
+fi
+
+echo ""
+echo "$ok ok, $failed failed"
+[ "$failed" -gt 0 ] && exit 1
+exit 0

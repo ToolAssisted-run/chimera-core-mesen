@@ -25,12 +25,14 @@ endif
 
 # Build options Mesen's own makefile does not set, all of them this
 # repository's patches: one thread (0001), a random sequence of our own
-# (0002), a call at each read of the controls (0003).
+# (0002), a call at each read of the controls (0003), files named by their
+# bare names in the folder "." (0004).
 defs = [
   '-DNDEBUG',
   '-DMESEN_SINGLE_THREAD',
   '-DMESEN_FIXED_RANDOM',
   '-DMESEN_INPUT_READ_HOOK',
+  '-DMESEN_BARE_PATHS',
 ]
 add_project_arguments(defs + ['-fno-strict-aliasing', '-Wno-narrowing'], language: ['c', 'cpp'])
 

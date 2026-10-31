@@ -170,6 +170,53 @@ Measured (native reference, this machine):
   A made-up 8 KiB rhythm ROM changes the sound (RMS about 3400), which shows
   the firmware file reaches the chip.
 
+## 2026-10-31: the core test script
+
+`waterbox/run-gate.sh` compares the sandboxed core with the native reference
+and needs no Chimera. 23 checks pass, 1 is skipped (the one through
+Chimera's engine, which needs a built Chimera and the package):
+
+- `<game>:equivalence`, `:input-shaped`, `:savestate`, `:turbo` for Nova
+  (3000 frames of `tests/inputs/nova.inputs`), Sprilo (1200 frames of the
+  pad exercise) and the EPSM test program (600): native == sandbox on
+  frames, picture, sound, lag and every memory domain; an idle run is
+  another machine; a save and a load around every frame change nothing; with
+  no picture for half the run, everything but the undrawn pictures is the
+  same.
+- `nova:session`: a state saved at frame 1500 by one process and loaded by
+  another ends on the straight run's machine; the same state loaded as if
+  taken ten frames earlier does not (the check can fail).
+- `time:stall`: a 300 ms stop of the host changes nothing, native and
+  sandboxed.
+- `epsm:present`: the EPSM header plugs the chip in (Mesen's log line, both
+  flavors); with it the sound has an RMS of 4300, without it the program is
+  silent; the RAM is the same either way.
+- `epsm:firmware`: a made-up 8 KiB rhythm ROM changes the sound in both
+  flavors alike; a 4 KiB file is refused as Mesen refuses it.
+- `settings:*`: `port1`, `region`, `ramPowerOnState` and `randomSeed` each
+  build another machine than their baseline, native == sandbox; PAL runs at
+  322445/6448 frames a second.
+- `savedata:export`: Nova's 32 KiB battery RAM comes out the same.
+
+Each check was seen to fail (gates.md, B), with the build broken on purpose
+and then put back:
+
+- a sandbox left one build behind (the input fix built natively only):
+  every equivalence check failed;
+- `SetRenderingEnabled` a no-op: the three turbo checks failed ("drew every
+  frame");
+- the EPSM's volume 0: `epsm:present` and `epsm:firmware` failed;
+- `port1` read as "gamepad" whatever it said: `settings:port1` failed;
+- no save data offered: `savedata:export` failed;
+- a host clock read written into RAM each frame: `time:stall` failed on the
+  native run (and every equivalence check);
+- `run-wbx --rerecord` loading the first frame's state each frame: the three
+  savestate checks failed.
+- `epsm:firmware` failed for real before patch 0004: the sandbox looked for
+  `./ymf288_adpcm_rom.bin`, which no mount is called, while the native run
+  found it in its working folder. Patch 0004 (`MESEN_BARE_PATHS`) names a
+  file in the folder "." by its bare name.
+
 ## Questions for the owner
 
 - Which fork: MesenCE (recommended, chosen) or the archived Mesen2.

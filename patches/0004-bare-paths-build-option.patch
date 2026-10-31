@@ -1,0 +1,16 @@
+--- a/Utilities/FolderUtilities.cpp
++++ b/Utilities/FolderUtilities.cpp
+@@ -227,6 +227,13 @@
+ 
+ string FolderUtilities::CombinePath(string folder, string filename)
+ {
++#ifdef MESEN_BARE_PATHS
++	//A host whose files are found by their bare names (a sandbox's mounts)
++	//sets its folders to "."; a file in it is then named on its own.
++	if(folder == ".") {
++		return filename;
++	}
++#endif
+ 	//Windows supports forward slashes for paths, too.  And fs::u8path is abnormally slow.
+ 	if(folder[folder.length() - 1] != '/') {
+ 		return folder + "/" + filename;
