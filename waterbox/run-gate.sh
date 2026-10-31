@@ -378,8 +378,38 @@ PYROM
 	else
 		report "engine:epsm-firmware" FAIL "with the file: $(grep -m1 'rhythm\|chimera-run' "$work/fw.log"); without: $(grep -m1 'rhythm\|chimera-run' "$work/fw2.log")"
 	fi
+
+	# A movie through Chimera's engine: Nova's schedule written as a Chimera
+	# movie (|console|pad 1|pad 2|, each pad's letters in the declared order
+	# A B s S U D L R), played by chimera-run in a project, ends on the RAM
+	# of the native reference's run of the same schedule.
+	python3 -I - "$root/tests/inputs/nova.inputs" "$work/nova.movie.txt" <<'PYMOV'
+import sys
+out = []
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if not line:
+        continue
+    console, pad = line.split("|")[1:3]
+    held = {c for c in pad if c != "."}  # U D L R S s B A
+    p1 = "".join(c if c in held else "." for c in "ABsSUDLR")
+    out.append("|" + console + "|" + p1 + "|........|")
+open(sys.argv[2], "w").write("\n".join(out) + "\n")
+PYMOV
+	"$rn" "$work/nova" "${args[@]}" --dump-domain RAM "$work/mv.native.ram" > /dev/null 2>&1
+	"$runner" --new-project "$work/mv.chimeraProject" "$package" "$root/tests/roms/nova.nes" "$work/nova.movie.txt" > "$work/mv.make.log" 2>&1
+	"$runner" --project "$work/mv.chimeraProject" "$package" --files "$root/tests/roms" \
+		--dump "RAM=$work/mv.engine.ram" --meta "$work/mv.meta" > "$work/mv.log" 2>&1
+	mvframes=$(sed -n 's/^frames=//p' "$work/mv.meta" 2> /dev/null)
+	if [ "${mvframes:-0}" != 3000 ]; then
+		report "engine:movie" FAIL "the movie played ${mvframes:-no} frames, not 3000: $(tail -1 "$work/mv.log")"
+	elif cmp -s "$work/mv.native.ram" "$work/mv.engine.ram"; then
+		report "engine:movie" PASS "Nova's 3000-frame schedule as a Chimera movie ends on the native reference's RAM"
+	else
+		report "engine:movie" FAIL "the movie through Chimera ends on another RAM than the native run"
+	fi
 else
-	report "engine:*" SKIP "3 checks: need CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
+	report "engine:*" SKIP "4 checks: need CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
 fi
 
 echo ""

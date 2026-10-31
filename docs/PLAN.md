@@ -267,6 +267,85 @@ Trap: Nova writes into its battery RAM from the fourth frame after power
 on, so "the battery RAM survived a power cycle" is checked two frames after
 Power, against the same schedule without Power.
 
+## 2026-10-31: through Chimera
+
+- `waterbox/tests/run-frontend.sh` runs the package in Chimera's Qt window,
+  headless, on projects made with `chimera-run --new-project`: Nova's RAM
+  after 300 frames is the native reference's; P1 Right+Start held through
+  the window (a Lua script, with TAStudio recording) is the native run of
+  an input file holding them, and not the idle machine; `port1` none in the
+  project makes the held buttons dead; the EPSM test cartridge with the
+  drums on and a made-up rhythm ROM chosen in the window boots with the
+  EPSM and the ROM, RAM == native; the package's default keys are the
+  machine's. 5 ok, 0 failed, in 11 s. Without the firmware chosen the
+  window refuses the EPSM project ("this firmware was not found").
+- `run-gate.sh`'s `engine:movie`: Nova's 3000-frame schedule written as a
+  Chimera movie and played by chimera-run in a project ends on the native
+  reference's RAM. Seen to fail: the same movie with each pad's letters in
+  the wrong order ends elsewhere.
+- Speed: 3000 frames of Nova take 3.9 s in the sandbox (3.8 s natively),
+  about 770 frames a second; the EPSM test program about 600 (ymfm runs at
+  the chip's 8 MHz).
+
+## Where this stands (2026-10-31)
+
+Works, and is tested here on Linux:
+
+- Mesen's NES in the sandbox, identical to the native reference on two
+  homebrew games and the EPSM test program; savestates within a process and
+  across processes; turbo; virtual time; the EPSM present or absent by the
+  header; the rhythm ROM reaching the chip; settings; saved games in and
+  out and across a power cycle; the package, its contract tests, its texts
+  in 26 languages; chimera-run (input polls, suggestions, firmware, a
+  movie); Chimera's window (5 checks).
+- Commands and counts: `run-gate.sh` 26 ok (30 with `CHIMERA_ROOT`),
+  `run-frontend.sh` 5 ok, `test-packages` 21 PASS, `check-core-texts.py`
+  37 keys.
+
+Not done, or not proved:
+
+- **No real EPSM game has been run.** The EPSM is proved on this
+  repository's own test program (FM, SSG and rhythm writes through
+  $401C-$401F). The $4016 way of writing the chip, the chip's IRQ timers,
+  and a real game's music are untried. Needed from the owner: an EPSM game
+  or demo that may be used for testing, and the real
+  `ymf288_adpcm_rom.bin` (its SHA-1 can then be pinned in
+  `waterbox.config`).
+- **No commercial game has been tried.** Mesen's accuracy claims are
+  Mesen's; this core has run Nova the Squirrel to its first level and
+  Sprilo, nothing else.
+- **Windows** has not been run (no Windows box in this round). The guest is
+  the same file; what has failed only on Windows before is stacks. A
+  Windows run should open an EPSM project and Nova in the window, play a
+  movie recorded on Linux and end on the same RAM, and save and load a
+  state.
+- Mesen's other systems are compiled in and refused at load.
+- Devices: only the standard pad on ports 1 and 2. The Zapper, Four Score,
+  Arkanoid paddle, Famicom expansion devices and the Famicom Disk System
+  (which needs its BIOS) are not offered.
+- No system bus is exported (RAM Search works on the domains: RAM, WRAM,
+  Battery RAM, Mapper RAM, CIRAM, PALRAM, OAM, CHR RAM/ROM, PRG ROM).
+- CI is written and has never run (no remote).
+- Upstream's own test ROM suite (Mesen's `.mtp` recorded tests) is not run:
+  the test ROMs are not in the MesenCE repository.
+
+Next, in order: the owner's answers below; an EPSM game from the owner;
+the Windows run; a system bus; the Zapper and Four Score; then the other
+systems, the SNES and the GBA first.
+
+Traps, for whoever continues (each one cost time here):
+
+- Build both flavors before a test script: they build nothing and compare
+  stale binaries.
+- Mesen's `SetPreferences` resets the firmware folder override; set the
+  folders after the preferences.
+- An input provider registered before the game loads goes nowhere, and a
+  power cycle makes a new console: register after both.
+- The core's NES config defaults are not the UI's (volumes 0, no palette).
+- A path "./name" is not a mount's name: patch 0004.
+- Nova writes into its battery RAM from the fourth frame after power on.
+- The window needs Qt's libraries: `--qt-lib`.
+
 ## Questions for the owner
 
 - Which fork: MesenCE (recommended, chosen) or the archived Mesen2.
