@@ -685,82 +685,211 @@ for the export to run, the permission has to be given there (a rule
 allowing that command in the session's settings), or the owner exports
 the songs and hands over the .nes files.
 
-## Where this stands (2026-10-31, fourth round)
+## 2026-10-31: the owner's files, fifth round
+
+The owner gave, for local tests only (they stay outside this repository;
+`MESEN_CONTENT_DIR` names the folder, `docs/BUILDING.md` lists the files):
+the real YM2608/YMF288 rhythm ROM, an EPSM game (Sonic The Hedgehog,
+"FAMICOM 60 PIN GAME"), Duck Hunt, the Famicom Disk System's BIOS with Ai
+Senshi Nicol, both Arkanoids and four four-player games.
+
+### The rhythm ROM pinned
+
+The file's SHA-1, 50b6c3e288eaa12ad275d4f323267bb72b0445df, is now pinned
+in `waterbox.config`, with `ym2608_adpcm_rom.bin` as the name it usually
+has. The core still mounts it under the id `ymf288_adpcm_rom.bin`, the name
+Mesen reads. Chimera's firmware window takes only that file now; chimera-run
+mounts whatever it is given and records its hash, so the made-up 8 KiB
+stand-in stays where no Chimera is involved (`epsm:firmware`, native and
+sandbox) and the checks through Chimera use the real file
+(`engine:epsm-firmware`, `epsm:frontend`; SKIP without it). The window's
+`epsm:frontend`, which used the made-up file, now needs the real one.
+
+Measured (`epsm:real-rhythm`): the EPSM test program's drums with the real
+ROM, native == sandbox, sound RMS 1847.8 against 4212.5 with no ROM (Mesen
+then plays zeros as ADPCM, which is not silence) and 4465.4 for the
+difference.
+
+### How Mesen decides to plug the EPSM in
+
+From MesenCE's source at the pin: only the header. `NesHeader::HasEpsm` is
+true for an NES 2.0 header with console type 3 and extended console type 4;
+the game database (`MesenNesDB.txt`, 10655 games) has no field for it and
+does not hold Sonic's CRC32 (DB358674) anyway; there is no setting. In
+Mesen a person with a plain iNES file edits the header (the debugger's NES
+Header Editor offers "EPSM Module" as the console type) and saves the file.
+
+So the core does it with a setting, as the owner suggested, needing nothing
+of Chimera: **Expansion Port** gains **EPSM**. Patch 0008
+(`MESEN_EXPANSION_EPSM`) adds a flag the host sets before loading; the
+mapper then builds the EPSM as for such a header. A header that asks for the
+EPSM still gets it whatever the setting says, as in Mesen.
+`SuggestSettings` proposes `expansion: epsm` and `epsmDrums: on` for a
+plain header whose program has 8 or more stores to $401C-$401F (STA, STX,
+STY absolute, STA indexed); EPSM programs have many (this repository's test
+program 92, FamiStudio's driver 70), other games none (0 in each of the
+owner's ten other files and the homebrew here). It cannot tell a game that
+reaches the chip only through $4016.
+
+Checks: `epsm:expansion` - the test program with a plain header and the
+setting sounds sample for sample as with the EPSM header and gets the
+timer's 56 IRQs; `engine:suggest` - the suggestion for that file, through
+chimera-run.
+
+### Sonic The Hedgehog: the EPSM plugged in, and nothing written to it
+
+With the setting, the core plugs the EPSM in for Sonic and the rhythm ROM
+is loaded (the log says both); 1800 frames of the pad exercise reach the
+first level; native == sandbox == saved and loaded each frame; a state
+crosses processes; a 1200-frame movie made into a project by chimera-run and
+replayed by another ends on the native RAM; in Chimera's window the RAM is
+the native one. **But this file plays no EPSM note.** Its sound with the
+EPSM and without is the same sample for sample (difference RMS 0.0 over
+1800 frames), and its program has nothing that could reach the chip: no
+store to $401C-$401F (absolute, indexed or through a pointer to page $40),
+and its five stores to $4016 write only 1 and 0 (the pads' strobe), never
+OUT1. Its RAM and work RAM hold no such code either. This copy is a game
+that runs on the 2A03's sound; either it is not the EPSM version, or the
+EPSM version is another file. The EPSM is proved on this repository's test
+program with the real rhythm ROM, not on a game.
+
+### The Famicom Disk System
+
+- `.fds` files (with fwNES's header or without) go in the cartridge slot;
+  the BIOS is the firmware `disksys.rom`, SHA-1
+  57fe1bdee955bb48d357e463ccbf129496930b62 pinned, required when the slot
+  holds an .fds file (`requiredWhen: {"slot": "rom", "extension": "fds"}`).
+  Without it the core says so (`error.no_fds_bios`) instead of Mesen's
+  bare refusal.
+- The drive, as the other disk cores in Chimera do it (PUAE, VICE): three
+  buttons in the console's group, added at the end of the wire - Previous
+  Disk (`<`), Next Disk (`>`) move a selector over the disk's sides; Eject
+  Disk (`e`) takes the disk out when pressed and puts the selected side in
+  when let go. The selector lives in guest memory, so states and rewind
+  carry it. They are active only for a Disk System game. Side A is in the
+  drive at power on (Mesen's `FdsAutoLoadDisk`); Mesen's automatic side
+  changes stay off (they are off anyway while a movie plays or records in
+  Mesen), so the movie says when a side changes.
+- Not done: the drive light and the drive's media list
+  (`GetDrive*` exports: Mesen keeps the motor's state private), and what
+  the game writes to the disk is kept in memory and lost at the end of the
+  session (no export).
+
+Ai Senshi Nicol (`game:fds-nicol`): Start on the title (frames 1800 and
+1850), the story plays, the game asks "PLEASE SET DISK B" at about frame
+3700; Eject Disk held from 3800 for 60 frames with Next Disk pressed puts
+side B in, and from about 5500 stage 1 is played (Right held from 5700).
+Native == sandbox == saved and loaded each frame; a state saved at 4500
+crosses processes; the last picture has 13 colours (the prompt and the
+BIOS's error screen have 2). The same schedule as a Chimera movie, its disk
+columns included, replayed by chimera-run ends on the native RAM
+(`engine:fds-nicol`); 300 frames in the window too (`fds:frontend`).
+
+Traps: with the disk taken out too early the BIOS shows ERROR.07 (wrong
+side) alternating with the prompt. And the harness runs as many frames as
+its input file has, whatever `--frames` says: pictures taken with
+`--frames N` of a longer file are the file's last frame (this cost a round
+of wrong conclusions here; cut the file).
+
+### The devices in real games
+
+- **Duck Hunt** (`game:duckhunt`), the Zapper in port 2: Game A, the first
+  duck's sprites read from OAM at frame 760 (middle x 172, y 118), the
+  Zapper pointed there through its axes (44032, 32222) and the trigger
+  pulled: the duck falls and the score is 500 ($00C5 = 5). The same shot at
+  the sky misses (0). Native == sandbox.
+- **Arkanoid** (`game:arkanoid`), the Arkanoid controller in port 2: the
+  paddle's left edge at x 16 with the knob at 0, x 160 with it at 160.
+  **Arkanoid II** (`game:arkanoid2`), the Famicom's on the expansion port:
+  x 12 and x 154. Arkanoid II takes the knob only when the game is started
+  with the knob's button; started with the pad's Start it plays with the
+  pad. Native == sandbox.
+- **Four players** (`game:rcproam2`, `game:indyheat`), the Four Score: on
+  the screen where players join, P3 and P4 press Start and R.C. Pro-Am II
+  shows their initials being entered and Indy Heat their cars' name panels
+  (seen in the pictures); the machine differs from the run without those
+  presses, and with plain pads instead of the Four Score the presses reach
+  nothing. Native == sandbox. Super Off Road and Kings of the Beach were not
+  tried.
+
+### Seen to fail
+
+One build broken on purpose in eight places at once (the EPSM setting
+ignored, Next Disk doing nothing, the Zapper's Y always 0, the knob at half
+its place, the Four Score's players 3 and 4 given players 1 and 2's pads,
+the suggestion's threshold out of reach, the EPSM's volume 0, the Eject
+Disk button said inactive) and a package with a wrong rhythm ROM pin:
+`run-gate.sh` 35 ok, 22 failed, among them every new check
+(`epsm:expansion`, `epsm:real-rhythm`, all eight `game:` checks,
+`engine:suggest`, `engine:epsm-firmware`, `engine:sonic-epsm`,
+`engine:fds-nicol`). `game:fds-nicol` first PASSED with Next Disk broken:
+it only asked that the side change changed the machine, and putting side A
+back in does too. It now asks for stage 1's picture, and failed then (2
+colours). The window test on the broken package: `sonic:frontend` failed;
+`epsm:frontend` (it compares RAM, and the volume does not reach RAM) and
+`fds:frontend` (no side change in 300 frames) did not. `texts:names` failed
+on the new texts first: "BIOS" bent in Polish, Romanian and Norwegian
+(seven texts) once BIOS and Disk System were added to its names.
+
+## Where this stands (2026-10-31, fifth round)
 
 Works, and is tested here on Linux against Chimera main cb46d2b7
 (`~/chimera-scratch-bump`):
 
-- Mesen's NES in the sandbox, identical to the native reference on two
-  homebrew games, the EPSM test program and the input test program;
-  savestates within a process and across processes; turbo; virtual time;
-  the EPSM present or absent by the header; the rhythm ROM reaching the
-  chip; settings; saved games in and out and across a power cycle.
-- The ports: a pad, nothing, the Four Score (four pads), the Zapper, the
-  Arkanoid controller; and, new this round, the Famicom's expansion port:
-  the Famicom Zapper, the Famicom Arkanoid controller, the four-player
-  adapter. Only the controls the ports hold are in a movie.
-- Two buses: the CPU's 64 KiB and the PPU's 16 KiB.
-- No network code in `core.wbx` (patch 0006, checked by `build:no-network`).
-- The package, its contract tests, its texts in 26 languages with every
-  name unbent (`texts:names`); chimera-run (input polls, suggestions,
-  firmware, movies, the six devices); Chimera's window (6 checks).
-- Checks for EPSM songs exported by FamiStudio, ready and run on
-  FamiStudio's bare shells only (see "EPSM songs made with FamiStudio").
-- Commands and counts: `run-gate.sh` 46 ok with `CHIMERA_ROOT` (40 ok
-  without), `run-frontend.sh` 6 ok, each with the FamiStudio checks
-  skipped; `test-packages` 21 PASS, `check-core-texts.py` 45 keys,
-  `check-names.py` 0 in 26 tables, Chimera's `check-proper-nouns.py` 0.
+- Mesen's NES in the sandbox, identical to the native reference on the
+  homebrew, the EPSM test program, the input test program and, new, eight
+  of the owner's commercial games; savestates within a process and across
+  processes; turbo; virtual time; settings; saved games.
+- The EPSM: by the NES 2.0 header, or, new, by **Expansion Port = EPSM**
+  for a plain header (patch 0008), suggested when the program writes the
+  EPSM's registers. The real rhythm ROM is pinned (SHA-1 50b6c3e2...) and
+  plays the test program's drums.
+- New: the **Famicom Disk System** - .fds games, the BIOS as pinned
+  firmware, side changes by Previous Disk, Next Disk and Eject Disk. Ai
+  Senshi Nicol plays stage 1 after its side change, natively, sandboxed,
+  through chimera-run's movies and in the window.
+- The devices in real games: Duck Hunt (a duck hit through the Zapper's
+  axes), Arkanoid and Arkanoid II (the knob moves the paddle, port 2 and
+  the expansion port), R.C. Pro-Am II and Indy Heat (players 3 and 4 join
+  through the Four Score).
+- Two buses, no network code, the package and its contract tests, texts in
+  26 languages with every name unbent.
+- Commands and counts: `run-gate.sh` 57 ok with `CHIMERA_ROOT` and
+  `MESEN_CONTENT_DIR`, 47 ok with Chimera only, 41 ok with neither;
+  `run-frontend.sh` 8 ok with the content, 5 ok without; `test-packages`
+  22 PASS; `check-core-texts.py` 51 keys; `check-names.py` 0 in 26 tables;
+  Chimera's `check-proper-nouns.py` 0.
 
 Not done, or not proved:
 
-- **No FamiStudio song has been run.** Exporting the owner's EPSM test
-  songs needs FamiStudio's program to run on this machine. The owner
-  allowed it (2026-10-31), but the session's permission system refused it
-  in the third round and again in the fourth. Needed: a permission rule in
-  the session's settings for that one command (`dotnet FamiStudio.dll
-  <song.fms> rom-export <out.nes> -rom-export-mode:ntsc`), or the exported
-  .nes files from the owner. Then
-  run the checks with `MESEN_FAMISTUDIO_ROMS`, compare each export with its
-  shell, and commit them to `tests/` with FamiStudio's licence if the
-  comparison shows only FamiStudio's code and the MIT song data.
-- **No real EPSM game has been run**, and the rhythm ROM has not been
-  seen. The EPSM is proved on this repository's own test program only (FM,
-  SSG, rhythm, $4016 writes, the timer IRQ); FamiStudio's songs would be
-  the first music made by someone else. By the owner's decision the package
-  is not published, and no other system is started, until a real EPSM game
-  has run with the real `ymf288_adpcm_rom.bin` (its SHA-1 then pinned in
-  `waterbox.config`). The made-up rhythm ROM stays the stand-in.
-- **No commercial game has been tried**, and none of the devices has been
-  tried with a real game (Duck Hunt, Arkanoid, a four-player game, a
-  Famicom game using the expansion port): they are proved on this
-  repository's input test program.
-- **Windows** has not been run (no Windows box this round either; no GPU
-  is needed); the owner wants a Windows run before publishing.
-- Mesen's other systems are compiled in and refused at load. Next after
-  the EPSM is proved: the SNES and the GBA (owner, 2026-10-31).
-- Devices not offered: the adapter's two-player mode, the Famicom's
-  keyboards and Mesen's other expansion devices, the Power Pad, the Zapper
-  pointed off the screen (it can point at a black part of the picture),
-  and the Famicom Disk System (it needs its BIOS, not given yet).
-- The window check `expansion:frontend` proves the machine, not the list
-  of active controls: the window's Lua script presses buttons the core
-  says are not there (a break of that list went unseen there;
-  `engine:devices` catches it).
-- `bus:ppu-look` would not catch every side effect: a read of $2002 per
-  byte went unseen on Nova (see "the PPU bus").
-- CI is written and has never run (no remote).
-- Upstream's own test ROM suite is not run (the ROMs are not in MesenCE).
+- **No EPSM music from a game.** The Sonic The Hedgehog file the owner gave
+  has no EPSM code (see "Sonic The Hedgehog: the EPSM plugged in, and
+  nothing written to it"): with the EPSM plugged in it sounds exactly as
+  without. The EPSM is proved on this repository's test program, with the
+  real rhythm ROM. An EPSM build of a game (or FamiStudio's exported songs)
+  is still needed before publishing, by the owner's rule.
+- **No FamiStudio song has been run.** `build/famistudio/export/` was still
+  empty this round; FamiStudio was not run (the permission system refused
+  it twice before). The checks are ready.
+- The suggestion cannot tell a game that writes the EPSM only through
+  $4016.
+- The Disk System's drive light and media list are not exported; what a
+  game writes to its disk is lost at the end of the session.
+- Not tried: Super Off Road, Kings of the Beach; the Four Score in a race
+  (only the join screens); a .zip game file (the Duck Hunt check takes the
+  .nes out of the zip itself; the core does not open archives).
+- **Windows** has not been run; the owner wants a run before publishing.
+- Mesen's other systems are compiled in and refused at load.
+- The window checks `epsm:frontend` and `fds:frontend` were not seen to
+  fail (see "Seen to fail" above); `expansion:frontend` proves the machine,
+  not the list of active controls.
+- CI is written and has never run (no remote); without the owner's files
+  the game checks SKIP there, and so does `epsm:frontend`, which needs the
+  real rhythm ROM now that it is pinned.
 
-The fourth round changed nothing but this log: FamiStudio's export, now
-allowed by the owner, was refused again by the session's permission system
-(see "FamiStudio may export the test songs"). Nothing was rebuilt or
-re-tested in that round; the counts above are the third round's.
-
-Next, in order: the FamiStudio songs (once the permission system lets the
-export run, or the owner exports them); an EPSM game and the rhythm ROM from the owner; a Windows
-run; then publishing as `mesen` ("Mesen"); then the SNES and the GBA.
-Content-free work that could come before: the Zapper off the screen, the
-Power Pad, the adapter's two-player mode.
+Next, in order: an EPSM game that writes the chip (from the owner), or
+FamiStudio's exported songs; a Windows run; then publishing as `mesen`
+("Mesen"); then the SNES and the GBA.
 
 Traps, for whoever continues (each one cost time here):
 
@@ -776,8 +905,9 @@ Traps, for whoever continues (each one cost time here):
 - The core's NES config defaults are not the UI's (volumes 0, no palette).
 - A path "./name" is not a mount's name: patch 0004.
 - Nova writes into its battery RAM from the fourth frame after power on.
-- The harness runs 600 frames unless told (`--frames`), whatever the input
-  file's length: an input file's last line is not the last frame then.
+- The harness runs the larger of `--frames` (600 when not given) and the
+  input file's length. (This log said before that the file's length did
+  not count; it does.)
 - The window needs Qt's libraries: `--qt-lib`.
 - The language tables: an ending glued to a name hides behind a sign too
   ("YMF288:n", "EPSM's", "Mesen'in"); Chimera's checker sees only letters.
@@ -788,17 +918,26 @@ Traps, for whoever continues (each one cost time here):
 - FamiStudio's bare shells have the EPSM in their header and its driver in
   their program, but play no EPSM note: a check that only asks "is the
   EPSM plugged in" passes on them; ask what the EPSM added to the sound.
+- The harness runs as many frames as its input file has: `--frames N` with
+  a longer file still runs the whole file, so a picture "at frame N" is the
+  file's last frame. Cut the file to N lines.
+- A disk-side check must ask for what the right side brings (here the
+  stage's picture): putting the wrong side back in also changes the machine.
+- Arkanoid II takes the knob only when started with the knob's button.
+- chimera-run takes any firmware file it is given and records its hash; the
+  pinned SHA-1 is enforced by Chimera's firmware window, not by chimera-run.
+
+
 
 ## Questions for the owner
 
-The three questions of the first round (the fork, the licence, the network
-code) and the two of the second (where the Zapper plugs in, the axes'
-ranges) were answered on 2026-10-31; see the owner's decisions above.
+The three questions of the first round and the two of the second were
+answered on 2026-10-31; see the owner's decisions above.
 
 Open:
 
-- FamiStudio's export: the owner allowed it (2026-10-31), but the session's
-  permission system still refuses the command ("Code from External"). Will
-  the owner add a permission rule for it, or export the songs (NTSC and
-  PAL of `TestEPSM.fms`, `TestMultiEPSM.fms`, `Instruments EPSM.fms`) and
-  hand over the .nes files? Either way the checks are ready.
+- The Sonic file has no EPSM code. Is there an EPSM build of it (or
+  another EPSM game) to try? Until then no game has played EPSM music here.
+- FamiStudio's export: still not run (refused by the permission system in
+  rounds 3 and 4; the export folder was empty in round 5). Will the owner
+  export the songs, or add a permission rule for the command?

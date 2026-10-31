@@ -109,7 +109,7 @@ differ.
 ```
 
 It needs `run-native`, `run-wbx` and `core.wbx` built, and builds nothing.
-It ends with `<n> ok, <m> failed`; without Chimera it is 40 checks, a line
+It ends with `<n> ok, <m> failed`; without Chimera it is 41 checks, a line
 saying the checks that need Chimera were skipped, and one saying the
 FamiStudio checks were skipped (below). With
 
@@ -118,7 +118,30 @@ CHIMERA_ROOT=<chimera> MESEN_PACKAGE=<the package> ./waterbox/run-gate.sh
 ```
 
 six more run: Chimera's own checks of the texts, and five through
-`<chimera>/build/dll/chimera-run`: 46 checks.
+`<chimera>/build/dll/chimera-run`: 47 checks (57 with `MESEN_CONTENT_DIR`, below).
+
+### The owner's games and BIOS files (optional, local only)
+
+Commercial games and BIOS files are never in this repository. Put them in a
+folder under their own names and name it with `MESEN_CONTENT_DIR`:
+
+```
+MESEN_CONTENT_DIR=<folder> CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh
+MESEN_CONTENT_DIR=<folder> ./waterbox/tests/run-frontend.sh --chimera-root <chimera>
+```
+
+| File | Checks |
+| --- | --- |
+| `ym2608_adpcm_rom.bin` (SHA-1 50b6c3e2...) | `epsm:real-rhythm`, `engine:epsm-firmware`, `epsm:frontend`, and the Sonic checks |
+| `Sonic The Hedgehog (FAMICOM 60 PIN GAME).nes` | `game:sonic-epsm`, `engine:sonic-epsm`, `sonic:frontend` |
+| `Ai Senshi Nicol (Japan).fds` and `FDS_disksys-nintendo.rom` (SHA-1 57fe1bde...) | `game:fds-nicol`, `engine:fds-nicol`, `fds:frontend` |
+| `Duck Hunt (World).nes` or `Duck Hunt.zip` | `game:duckhunt` |
+| `Arkanoid (U) [!].nes`, `Arkanoid II (Japan).nes` | `game:arkanoid`, `game:arkanoid2` |
+| `R.C. Pro-Am II (U) [!].nes`, `Danny Sullivan's Indy Heat (U) [!].nes` | `game:rcproam2`, `game:indyheat` |
+
+Each check says SKIP when its files are absent. Their schedules are
+written by `waterbox/tests/make-schedule.py`; `docs/PLAN.md` says what each
+compares.
 
 ### EPSM songs made with FamiStudio (optional)
 
@@ -157,7 +180,8 @@ python3 <chimera>/tools/check-core-texts.py .
 
 It runs Chimera's window headless (no display) on projects it makes with
 `chimera-run --new-project`, and compares the console's RAM with the native
-reference's: 6 checks, and a seventh with `MESEN_FAMISTUDIO_ROMS`. Its files stay in `waterbox/tests/work/` (ignored by
+reference's: 5 checks, three more with `MESEN_CONTENT_DIR` (the real rhythm
+ROM, Sonic, the Disk System) and one with `MESEN_FAMISTUDIO_ROMS`. Its files stay in `waterbox/tests/work/` (ignored by
 git). `--qt-lib` is for a window built against a Qt the system does not
 know of, such as `~/qt/6.12.0/gcc_64/lib` after `tools/ci-chimera.sh`.
 
@@ -175,7 +199,9 @@ package; then Chimera's `publish-core.yml` publishes it.
 | --- | --- | --- |
 | The game (.nes, .unf) | the Cartridge slot | always |
 | A saved game (.sav) | the Saved game slot | to continue one |
-| `ymf288_adpcm_rom.bin`, 8 KiB | firmware | an EPSM game with EPSM Drums on |
+| A Famicom Disk System disk (.fds) | the Cartridge slot | always |
+| The rhythm ROM (`ym2608_adpcm_rom.bin`, 8 KiB, SHA-1 50b6c3e2...) | firmware `ymf288_adpcm_rom.bin` | an EPSM game with EPSM Drums on |
+| The Disk System's BIOS (`disksys.rom`, 8 KiB, SHA-1 57fe1bde...) | firmware `disksys.rom` | a .fds game |
 
 ## Troubleshooting
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "The kinds of file a project of this core holds; Chimera's New Project window is built from it. A project is one cartridge, and the saved game it starts from if it has one.",
+  "_comment": "The kinds of file a project of this core holds; Chimera's New Project window is built from it. A project is one cartridge (or one Famicom Disk System disk, all its sides in one file), and the saved game it starts from if it has one.",
   "slots": [
     {
       "id": "rom",
@@ -9,7 +9,8 @@
       "formats": [
         "nes",
         "unf",
-        "unif"
+        "unif",
+        "fds"
       ],
       "help": "slot.rom.help"
     },

@@ -14,9 +14,15 @@
 #   expansion:frontend the four-player adapter in the Famicom's expansion
 #                      port, players 3 and 4 held through the window == a
 #                      native run of an input file holding the same, != idle
-#   epsm:frontend      the EPSM test cartridge with the drums on and a
-#                      made-up rhythm ROM chosen in the window: RAM == native,
-#                      and the core's log says the EPSM and the ROM are there
+#   epsm:frontend      the EPSM test cartridge with the drums on and the real
+#                      rhythm ROM chosen in the window: RAM == native, and the
+#                      core's log says the EPSM and the ROM are there
+#   sonic:frontend     Sonic The Hedgehog with the EPSM in the expansion port
+#                      and the rhythm ROM: RAM == native, the EPSM there
+#   fds:frontend       Ai Senshi Nicol with the Disk System's BIOS: RAM ==
+#                      native, the disk's two sides found
+#                      (these three need MESEN_CONTENT_DIR, the owner's files,
+#                      and say SKIP without them)
 #   famistudio:frontend  only with MESEN_FAMISTUDIO_ROMS (a folder of EPSM
 #                      songs FamiStudio exported to .nes): each one in the
 #                      window == native, with the EPSM; SKIP without it
@@ -185,29 +191,81 @@ else
 	report "expansion:frontend" PASS "the four-player adapter in the expansion port: P3 Right and P4 Start held in the window == the native input file holding them"
 fi
 
-# --- the EPSM, its drums on and a rhythm ROM chosen in the window ---
-python3 -I - "$work/rhythm.bin" <<'PYROM'
-import random, sys
-r = random.Random(410)
-open(sys.argv[1], "wb").write(bytes(r.randrange(256) for _ in range(8192)))
-PYROM
-python3 -I "$here/settings-config.py" "$work/window.fw.json" '{}' "{\"ymf288_adpcm_rom.bin\": \"$work/rhythm.bin\"}"
-p="$(make_project epsm epsm-test.nes '{"epsmDrums":"on"}' "ymf288_adpcm_rom.bin=$work/rhythm.bin")"
-cp "$work/rhythm.bin" "$work/ymf288_adpcm_rom.bin"
-if [ -z "$p" ]; then
-	report "epsm:frontend" FAIL "no project made (see tests/work/project.epsm/make.log)"
-elif ! native_ram epsm epsm-test.nes '{"epsmDrums":"on"}' "$hold" "$work/ymf288_adpcm_rom.bin"; then
-	report "epsm:frontend" FAIL "native runner error (see tests/work/native.epsm.txt)"
-elif ! run_window epsm "$p" "$work/window.fw.json" "$frames" "P1 Right,P1 Start"; then
-	report "epsm:frontend" FAIL "the window did not report OK (see tests/work/epsm.log)"
-elif ! cmp -s "$work/native.epsm.ram.bin" "$work/epsm.ram.bin"; then
-	report "epsm:frontend" FAIL "RAM differs from the native reference"
-elif ! grep -q 'EPSM present' "$work/epsm.log"; then
-	report "epsm:frontend" FAIL "the window's log does not say the EPSM is plugged in"
-elif ! grep -q 'EPSM rhythm ROM loaded' "$work/epsm.log"; then
-	report "epsm:frontend" FAIL "the rhythm ROM chosen in the window did not reach Mesen"
+# --- the owner's files (MESEN_CONTENT_DIR, never in this repository): the
+# real rhythm ROM, Sonic The Hedgehog with the EPSM in the expansion port,
+# and the Disk System's BIOS with Ai Senshi Nicol. Each check says SKIP
+# without its files. The rhythm ROM's SHA-1 is pinned in the package, so a
+# made-up file would not be taken (run-gate.sh's engine:epsm-firmware). ---
+cdir="${MESEN_CONTENT_DIR:-}"
+content() { [ -n "$cdir" ] && [ -f "$cdir/$1" ] && printf '%s' "$cdir/$1"; }
+rhythm="$(content ym2608_adpcm_rom.bin)"
+# a project of one of the owner's games: tag file settings [firmware id=path]
+make_game_project() {
+	local tag="$1" file="$2" settings="$3" fw="${4:-}" ext="${2##*.}"
+	local dir="$work/project.$tag"
+	rm -rf "$dir" && mkdir -p "$dir" && cp "$file" "$dir/game.$ext"
+	local extra=()
+	[ -n "$fw" ] && extra=(--firmware "$fw")
+	"$crun" --new-project "$dir/$tag.chimeraProject" "$package" "$dir/game.$ext" \
+		--settings "$settings" "${extra[@]}" > "$dir/make.log" 2>&1 && echo "$dir/$tag.chimeraProject"
+}
+# its native reference: tag file settings inputs [firmware files mounted by id: id=path...]
+native_game_ram() {
+	local tag="$1" file="$2" settings="$3" inputs="$4" ext="${2##*.}"
+	shift 4
+	local wd="$work/native.$tag"
+	rm -rf "$wd" && mkdir -p "$wd" && cp "$file" "$wd/game.$ext"
+	printf '{"rom":["game.%s"]}' "$ext" > "$wd/slots"
+	printf '%s' "$settings" > "$wd/settings"
+	for f in "$@"; do cp "${f#*=}" "$wd/${f%%=*}"; done
+	local extra=(--frames "$frames")
+	[ -n "$inputs" ] && extra+=(--inputs "$inputs")
+	"$rn" "$wd" "${extra[@]}" --dump-domain RAM "$work/native.$tag.ram.bin" > "$work/native.$tag.txt" 2>&1
+}
+game_window_leg() { # check tag file settings firmware-id hold-inputs hold-names [what the log must say...]
+	local check="$1" tag="$2" file="$3" settings="$4" fwid="$5" fwfile="$6" holdin="$7" holdnames="$8"
+	shift 8
+	python3 -I "$here/settings-config.py" "$work/window.$tag.json" '{}' "{\"$fwid\": \"$fwfile\"}"
+	local p
+	p="$(make_game_project "$tag" "$file" "$settings" "$fwid=$fwfile")"
+	if [ -z "$p" ]; then
+		report "$check" FAIL "no project made (see tests/work/project.$tag/make.log)"; return
+	elif ! native_game_ram "$tag" "$file" "$settings" "$holdin" "$fwid=$fwfile"; then
+		report "$check" FAIL "native runner error (see tests/work/native.$tag.txt)"; return
+	elif ! run_window "$tag" "$p" "$work/window.$tag.json" "$frames" "$holdnames"; then
+		report "$check" FAIL "the window did not report OK (see tests/work/$tag.log)"; return
+	elif ! cmp -s "$work/native.$tag.ram.bin" "$work/$tag.ram.bin"; then
+		report "$check" FAIL "RAM differs from the native reference"; return
+	fi
+	for line in "$@"; do
+		if ! grep -q "$line" "$work/$tag.log"; then
+			report "$check" FAIL "the window's log does not say '$line'"; return
+		fi
+	done
+	report "$check" PASS "$frames frames in the window, $holdnames held: RAM == native; the log says: $(printf '%s; ' "$@")"
+}
+
+if [ -z "$rhythm" ]; then
+	report "epsm:frontend" SKIP "needs ym2608_adpcm_rom.bin in MESEN_CONTENT_DIR (the rhythm ROM's SHA-1 is pinned)"
 else
-	report "epsm:frontend" PASS "the EPSM cartridge in the window: RAM == native, the EPSM and its rhythm ROM are there"
+	cp "$root/tests/roms/epsm-test.nes" "$work/epsm-test.nes"
+	game_window_leg epsm:frontend epsm "$work/epsm-test.nes" '{"epsmDrums":"on"}' ymf288_adpcm_rom.bin "$rhythm" "$hold" "P1 Right,P1 Start" \
+		'EPSM present' 'EPSM rhythm ROM loaded'
+fi
+sonic="$(content 'Sonic The Hedgehog (FAMICOM 60 PIN GAME).nes')"
+if [ -z "$sonic" ] || [ -z "$rhythm" ]; then
+	report "sonic:frontend" SKIP "needs Sonic The Hedgehog and ym2608_adpcm_rom.bin in MESEN_CONTENT_DIR"
+else
+	game_window_leg sonic:frontend sonic "$sonic" '{"expansion":"epsm","epsmDrums":"on"}' ymf288_adpcm_rom.bin "$rhythm" "$hold" "P1 Right,P1 Start" \
+		'EPSM present' 'EPSM rhythm ROM loaded'
+fi
+nicol="$(content 'Ai Senshi Nicol (Japan).fds')"
+fdsbios="$(content FDS_disksys-nintendo.rom)"
+if [ -z "$nicol" ] || [ -z "$fdsbios" ]; then
+	report "fds:frontend" SKIP "needs 'Ai Senshi Nicol (Japan).fds' and FDS_disksys-nintendo.rom in MESEN_CONTENT_DIR"
+else
+	game_window_leg fds:frontend nicol "$nicol" '{}' disksys.rom "$fdsbios" "$hold" "P1 Right,P1 Start" \
+		'Disk System: 2 disk sides'
 fi
 
 # --- FamiStudio's EPSM songs in the window (only with MESEN_FAMISTUDIO_ROMS,

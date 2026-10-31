@@ -37,7 +37,7 @@ folder = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "languag
 
 # This core's names, then Chimera's (tools/check-proper-nouns.py).
 NAMES = ["Mesen", "MesenCE", "NES", "iNES", "NES 2.0", "UNIF", "Famicom", "Nintendo", "EPSM", "YMF288", "YM2608",
-         "Yamaha", "Dendy", "NTSC", "PAL", "Zapper", "Four Score", "Arkanoid", "Vaus", "Taito",
+         "Yamaha", "Dendy", "NTSC", "PAL", "Zapper", "Four Score", "Arkanoid", "Vaus", "Taito", "Disk System", "BIOS",
          "Chimera", "TAStudio", "GitHub", "Lua", "Windows", "Linux", "macOS", "OpenGL", "Vulkan", "Direct3D", "SQLite",
          "miniBox", "ffmpeg", "Qt", "Wayland"]
 try:

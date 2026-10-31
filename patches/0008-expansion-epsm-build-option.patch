@@ -1,0 +1,53 @@
+Build option MESEN_EXPANSION_EPSM: the host can plug the EPSM in for a
+cartridge whose header does not ask for it.
+
+Mesen plugs the EPSM (a YMF288 on the Famicom's expansion port) in only
+when the cartridge's header is NES 2.0 with console type 3 and extended
+console type 4. A file with a plain iNES header has no way to say it, and
+Mesen's answer is to edit the header (its NES header editor). With this
+option the host sets MesenExpansionEpsm before the game is loaded, as a
+setting of its own, and the mapper then builds the EPSM as for such a
+header. Off, nothing changes.
+
+--- a/Core/NES/BaseMapper.cpp
++++ b/Core/NES/BaseMapper.cpp
+@@ -18,6 +18,10 @@
+ #include "Utilities/Serializer.h"
+ #include "Shared/MemoryType.h"
+ #include "Shared/MemoryOperationType.h"
++
++#ifdef MESEN_EXPANSION_EPSM
++bool MesenExpansionEpsm = false;
++#endif
+ #include "Shared/FirmwareHelper.h"
+ 
+ void BaseMapper::WriteRegister(uint16_t addr, uint8_t value)
+@@ -762,6 +766,13 @@
+ 
+ 	_romInfo.HasChrRam = HasChrRam();
+ 
++#ifdef MESEN_EXPANSION_EPSM
++	//An EPSM the host put in the expansion port, whatever the header says
++	if(MesenExpansionEpsm) {
++		_romInfo.HasEpsm = true;
++	}
++#endif
++
+ 	if(_romInfo.HasEpsm) {
+ 		vector<uint8_t> adpcmRom;
+ 		FirmwareHelper::LoadYmf288AdpcmRom(_emu, adpcmRom);
+--- a/Core/NES/BaseMapper.h
++++ b/Core/NES/BaseMapper.h
+@@ -12,6 +12,12 @@
+ 
+ class NesConsole;
+ class Epsm;
++
++#ifdef MESEN_EXPANSION_EPSM
++//The host plugs the EPSM into the expansion port for a cartridge whose
++//header does not say it has one (set before the game is loaded).
++extern bool MesenExpansionEpsm;
++#endif
+ enum class MemoryType;
+ struct MapperStateEntry;
+ 

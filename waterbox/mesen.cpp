@@ -45,6 +45,8 @@
 #include "NES/NesMemoryManager.h"
 #include "NES/GameDatabase.h"
 #include "NES/Input/NesController.h"
+#include "NES/BaseMapper.h"
+#include "NES/Mappers/FDS/Fds.h"
 #include "Shared/IControllerHub.h"
 #include "Utilities/FolderUtilities.h"
 #include "Utilities/RandomHelper.h"
@@ -65,7 +67,9 @@ extern "C" const size_t mesen_nes_db_size;
  * Score or the four-player adapter), then 34 P2 Trigger (the Zapper's) and
  * 35 P2 Fire (the Arkanoid controller's), then 36 Expansion Trigger and 37
  * Expansion Fire (the same two devices made for the Famicom's expansion
- * port). The declaration is the union of every device the ports can hold;
+ * port), then 38 Previous Disk, 39 Next Disk and 40 Eject Disk (the Famicom
+ * Disk System's drive: a selector over the disk's sides, and the disk out
+ * of the drive while Eject is held). The declaration is the union of every device the ports can hold;
  * IsButtonActive says which of them this machine has. The order only
  * grows, so a movie made before keeps its columns.
  *
@@ -81,7 +85,10 @@ extern "C" const size_t mesen_nes_db_size;
 #define BTN_FIRE (BTN_TRIGGER + 1)
 #define BTN_EXP_TRIGGER (BTN_FIRE + 1)
 #define BTN_EXP_FIRE (BTN_EXP_TRIGGER + 1)
-#define BTN_COUNT (BTN_EXP_FIRE + 1)
+#define BTN_PREV_DISK (BTN_EXP_FIRE + 1)
+#define BTN_NEXT_DISK (BTN_PREV_DISK + 1)
+#define BTN_EJECT_DISK (BTN_NEXT_DISK + 1)
+#define BTN_COUNT (BTN_EJECT_DISK + 1)
 static uint8_t g_buttons[BTN_COUNT];
 
 #define AXIS_ZAPPER_X 0
@@ -96,7 +103,7 @@ static int32_t g_axes[AXIS_COUNT] = { 32768, 32768, 80, 32768, 32768, 80 };
 /* what the ports hold (the settings port1, port2 and expansion) */
 enum { PORT1_GAMEPAD, PORT1_NONE, PORT1_FOUR_SCORE };
 enum { PORT2_NONE, PORT2_GAMEPAD, PORT2_ZAPPER, PORT2_ARKANOID };
-enum { EXP_NONE, EXP_ZAPPER, EXP_ARKANOID, EXP_FOUR_PLAYER };
+enum { EXP_NONE, EXP_ZAPPER, EXP_ARKANOID, EXP_FOUR_PLAYER, EXP_EPSM };
 static int g_port1 = PORT1_GAMEPAD, g_port2 = PORT2_NONE, g_exp = EXP_NONE;
 
 /* wire column -> NesController::Buttons bit */
@@ -109,6 +116,13 @@ static char g_loadError[512];
 static Emulator *g_emu;
 static int g_inputRead;
 static int g_epsm;
+
+/* the Famicom Disk System's drive: which side the selector is on, and the
+ * disk buttons as they were on the frame before (a press is an edge). Plain
+ * guest memory, so a savestate carries them with the machine. */
+static int g_fds;
+static int g_diskSelected;
+static uint8_t g_diskWas[3];
 
 /* the picture of the frame, BGRA; Mesen's decoder writes 0xAARRGGBB words,
  * which are BGRA bytes on a little-endian machine */
@@ -305,10 +319,10 @@ static void read_ports(void)
 {
 	static const char *const opts1[] = { "gamepad", "none", "fourScore" };
 	static const char *const opts2[] = { "none", "gamepad", "zapper", "arkanoid" };
-	static const char *const optsExp[] = { "none", "famicomZapper", "famicomArkanoid", "fourPlayerAdapter" };
+	static const char *const optsExp[] = { "none", "famicomZapper", "famicomArkanoid", "fourPlayerAdapter", "epsm" };
 	g_port1 = setting_choice("port1", opts1, 3, PORT1_GAMEPAD);
 	g_port2 = setting_choice("port2", opts2, 4, PORT2_NONE);
-	g_exp = setting_choice("expansion", optsExp, 4, EXP_NONE);
+	g_exp = setting_choice("expansion", optsExp, 5, EXP_NONE);
 }
 
 static void configure(EmuSettings *s)
@@ -355,15 +369,24 @@ static void configure(EmuSettings *s)
 	/* the Famicom's expansion port, beside the two controller ports (Mesen
 	 * plugs it in whatever console it emulates) */
 	static const ControllerType expTypes[] = { ControllerType::None, ControllerType::FamicomZapper,
-		ControllerType::FamicomArkanoidController, ControllerType::FourPlayerAdapter };
+		ControllerType::FamicomArkanoidController, ControllerType::FourPlayerAdapter, ControllerType::None };
 	nes.ExpPort.Type = expTypes[g_exp];
+	/* the EPSM in the expansion port: Mesen builds it with the cartridge, as
+	 * for a header that asks for it (patch 0008). A header that asks for it
+	 * plugs it in whatever this setting says, as in Mesen. */
+	MesenExpansionEpsm = g_exp == EXP_EPSM;
 	for (int i = 0; i < 4; i++)
 		nes.ExpPortSubPorts[i].Type = g_exp == EXP_FOUR_PLAYER ? ControllerType::NesController : ControllerType::None;
 	nes.LightDetectionRadius = 0; /* Mesen's UI's default */
 	nes.AutoConfigureInput = false; /* the project's ports decide, not the database */
 	nes.EnableHdPacks = false;
 	nes.DisableGameDatabase = false;
-	nes.FdsAutoLoadDisk = false;
+	/* a Disk System game starts with its first side in the drive, as a
+	 * person would put it in; Mesen's automatic side changes stay off (the
+	 * movie says when a side is changed) */
+	nes.FdsAutoLoadDisk = true;
+	nes.FdsAutoInsertDisk = false;
+	nes.FdsFastForwardOnLoad = false;
 	for (int i = 0; i < 11; i++) {
 		nes.ChannelVolumes[i] = 100;
 		nes.ChannelPanning[i] = 0;
@@ -419,10 +442,34 @@ ECL_EXPORT const char *GetLoadError(void)
 	return g_loadError;
 }
 
+/* Whether a file is a Famicom Disk System disk: fwNES's header, or a bare
+ * disk image, whose first block starts "\x01*NINTENDO-HVC*" */
+static int is_fds_image(const uint8_t *d, size_t n)
+{
+	return (n >= 4 && memcmp(d, "FDS\x1a", 4) == 0) || (n >= 15 && memcmp(d, "\x01*NINTENDO-HVC*", 15) == 0);
+}
+
+/* The program's stores to the EPSM's registers, $401C-$401F: STA, STX and
+ * STY absolute and STA indexed. A cartridge whose header does not ask for
+ * the EPSM but whose program writes there was made for one. */
+static int epsm_stores(const uint8_t *prg, size_t n)
+{
+	static const uint8_t ops[] = { 0x8C, 0x8D, 0x8E, 0x99, 0x9D };
+	int count = 0;
+	for (size_t i = 0; i + 2 < n; i++)
+		if (prg[i + 2] == 0x40 && prg[i + 1] >= 0x1C && prg[i + 1] <= 0x1F && memchr(ops, prg[i], sizeof ops))
+			count++;
+	return count;
+}
+/* fewer than this many could be chance in a large program's data */
+#define EPSM_STORES_SUGGEST 8
+
 /* What the core would choose before the game boots (Chimera's new-project
- * window asks it instead of Init, on the same mounts). The cartridge's
- * header says whether it has the EPSM; when it does, the EPSM's drums are
- * suggested, and with them the rhythm ROM they play from. */
+ * window asks it instead of Init, on the same mounts). A cartridge whose
+ * header has the EPSM gets the EPSM's drums suggested, and with them the
+ * rhythm ROM they play from. A cartridge with a plain header whose program
+ * writes the EPSM's registers gets the EPSM in the expansion port as well.
+ * Neither can be told of a game that reaches the chip only through $4016. */
 ECL_EXPORT const char *SuggestSettings(void)
 {
 	static char answer[256];
@@ -430,20 +477,40 @@ ECL_EXPORT const char *SuggestSettings(void)
 	const char *file = "rom";
 	if (wbx_slot_count("rom") > 0 && wbx_slot_name("rom", 0, name, sizeof name) != NULL)
 		file = name;
-	uint8_t h[16] = { 0 };
+	std::vector<uint8_t> d;
 	FILE *f = fopen(file, "rb");
-	size_t got = f ? fread(h, 1, sizeof h, f) : 0;
-	if (f)
+	if (f) {
+		uint8_t buf[65536];
+		for (size_t n; (n = fread(buf, 1, sizeof buf, f)) > 0 && d.size() < (16u << 20);)
+			d.insert(d.end(), buf, buf + n);
 		fclose(f);
-	if (got < 16 || memcmp(h, "NES\x1a", 4) != 0) {
+	}
+	if (is_fds_image(d.data(), d.size())) {
+		snprintf(answer, sizeof answer, "{\"values\": {}, \"note\": \"suggest.fds\"}");
+		return answer;
+	}
+	if (d.size() < 16 || memcmp(d.data(), "NES\x1a", 4) != 0) {
 		snprintf(answer, sizeof answer, "{\"values\": {}, \"note\": \"suggest.not_ines\"}");
 		return answer;
 	}
+	const uint8_t *h = d.data();
 	/* NES 2.0, console type 3 (extended), extended console type 4: the EPSM
 	 * (Mesen's NesHeader::HasEpsm) */
 	int epsm = (h[7] & 0x0C) == 0x08 && (h[7] & 0x03) == 0x03 && (h[13] & 0x0F) == 0x04;
-	if (epsm)
+	if (epsm) {
 		snprintf(answer, sizeof answer, "{\"values\": {\"epsmDrums\": \"on\"}, \"note\": \"suggest.epsm\"}");
+		return answer;
+	}
+	/* the program: after the header and a trainer, as many 16 KiB banks as
+	 * the header's low byte says (enough for this question) */
+	size_t at = 16 + ((h[6] & 0x04) ? 512 : 0);
+	size_t prg = (size_t)h[4] * 16384;
+	if (at > d.size())
+		at = d.size();
+	if (prg == 0 || prg > d.size() - at)
+		prg = d.size() - at;
+	if (epsm_stores(d.data() + at, prg) >= EPSM_STORES_SUGGEST)
+		snprintf(answer, sizeof answer, "{\"values\": {\"expansion\": \"epsm\", \"epsmDrums\": \"on\"}, \"note\": \"suggest.epsm_program\"}");
 	else
 		snprintf(answer, sizeof answer, "{\"values\": {}, \"note\": \"suggest.no_epsm\"}");
 	return answer;
@@ -508,7 +575,19 @@ ECL_EXPORT int Init(void)
 		snprintf(g_loadError, sizeof g_loadError, "error.no_file");
 		return 0;
 	}
+	uint8_t head[16] = { 0 };
+	size_t headLen = fread(head, 1, sizeof head, f);
 	fclose(f);
+	/* a Disk System disk needs the Disk System's BIOS, which the frontend
+	 * mounts under its id; Mesen would only say the game did not load */
+	if (is_fds_image(head, headLen)) {
+		FILE *bf = fopen("disksys.rom", "rb");
+		if (bf == NULL) {
+			snprintf(g_loadError, sizeof g_loadError, "error.no_fds_bios");
+			return 0;
+		}
+		fclose(bf);
+	}
 
 	if (!g_emu->LoadRom(VirtualFile(std::string(file)), VirtualFile())) {
 		snprintf(g_loadError, sizeof g_loadError, "error.rejected" TEXT_ARG "%s", file);
@@ -537,6 +616,12 @@ ECL_EXPORT int Init(void)
 
 	NesConsole *nes = dynamic_cast<NesConsole *>(g_emu->GetConsole().get());
 	g_epsm = nes != nullptr && nes->GetEpsm() != nullptr;
+	Fds *fds = nes != nullptr ? dynamic_cast<Fds *>(nes->GetMapper()) : nullptr;
+	g_fds = fds != nullptr ? (int)fds->GetSideCount() : 0;
+	g_diskSelected = 0;
+	memset(g_diskWas, 0, sizeof g_diskWas);
+	if (g_fds)
+		fprintf(stderr, "[mesen] Disk System: %d disk sides\n", g_fds);
 	/* one greppable line per boot: the gate witnesses through it that both
 	 * flavors built the same machine around the cartridge's header */
 	fprintf(stderr, "[mesen] EPSM %s\n", g_epsm ? "present" : "absent");
@@ -571,8 +656,31 @@ ECL_EXPORT void FrameAdvance(uint64_t packed)
 	if (g_buttons[0]) {
 		g_emu->PowerCycle();
 		g_emu->RegisterInputProvider(g_input);
+		/* a new console: its drive has the first side in again */
+		g_diskSelected = 0;
 	} else if (g_buttons[1])
 		g_emu->Reset();
+
+	/* the Disk System's drive, between frames: Previous and Next Disk move
+	 * the selector over the disk's sides when pressed; Eject Disk takes the
+	 * disk out when pressed and puts the selected side in when let go (the
+	 * BIOS sees the drive empty for as long as it is held) */
+	if (g_fds) {
+		NesConsole *nes = dynamic_cast<NesConsole *>(g_emu->GetConsoleUnsafe());
+		Fds *fds = nes != nullptr ? dynamic_cast<Fds *>(nes->GetMapper()) : nullptr;
+		const uint8_t *now = &g_buttons[BTN_PREV_DISK];
+		if (now[0] && !g_diskWas[0])
+			g_diskSelected = (g_diskSelected + g_fds - 1) % g_fds;
+		if (now[1] && !g_diskWas[1])
+			g_diskSelected = (g_diskSelected + 1) % g_fds;
+		if (fds != nullptr) {
+			if (now[2] && !g_diskWas[2])
+				fds->EjectDisk();
+			else if (!now[2] && g_diskWas[2])
+				fds->InsertDisk((uint32_t)g_diskSelected);
+		}
+		memcpy(g_diskWas, now, sizeof g_diskWas);
+	}
 
 	g_emu->GetVideoDecoder()->SetDecodeEnabled(g_render != 0);
 	g_nsamples = 0;
@@ -615,6 +723,10 @@ ECL_EXPORT int IsButtonActive(int32_t index)
 		return g_exp == EXP_ZAPPER;
 	if (index == BTN_EXP_FIRE)
 		return g_exp == EXP_ARKANOID;
+	if (index == BTN_PREV_DISK || index == BTN_NEXT_DISK)
+		return g_fds > 1;
+	if (index == BTN_EJECT_DISK)
+		return g_fds > 0;
 	return 0;
 }
 

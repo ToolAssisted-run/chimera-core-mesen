@@ -547,6 +547,287 @@ PYHDR
 	done
 fi
 
+# ---------------------------------------------------------------- the EPSM in the expansion port
+# A cartridge with a plain header plugs the EPSM in when the setting
+# Expansion Port says EPSM (patch 0008). The test program with a plain
+# header (epsm-absent.nes) and that setting sounds as the same program with
+# the EPSM header does, and its timer's IRQs arrive; without the setting it
+# is silent (epsm:present above).
+wx="$(workdir epsm-exp epsm-absent.nes '{"expansion":"epsm"}')"
+"$rn" "$wx" --frames 600 --exercise --audio-out "$work/exp.pcm" --dump-domain RAM "$work/exp.ram" 2>"$work/exp.err" | digests > "$work/exp.nat"
+rw "$wx" --frames 600 --exercise 2>"$work/exp.box.err" | digests > "$work/exp.box"
+if ! grep -q '^\[mesen\] EPSM present' "$work/exp.err" || ! grep -q '^\[mesen\] EPSM present' "$work/exp.box.err"; then
+	report "epsm:expansion" FAIL "the setting did not plug the EPSM in, in both flavors"
+elif ! cmp -s "$work/exp.nat" "$work/exp.box"; then
+	report "epsm:expansion" FAIL "native and sandbox differ"
+elif ! cmp -s "$work/exp.pcm" "$work/epsm.pcm"; then
+	report "epsm:expansion" FAIL "the plain header with the setting does not sound as the EPSM header does (RMS $(loud "$work/exp.pcm"), with the header $rms_p)"
+elif [ "$(irqs "$work/exp.ram")" != "$irq_p" ]; then
+	report "epsm:expansion" FAIL "the chip's timer IRQs: $(irqs "$work/exp.ram"), with the header $irq_p"
+else
+	report "epsm:expansion" PASS "a plain header with Expansion Port = EPSM sounds as the EPSM header does (RMS $rms_p, the same samples) and gets the timer's $irq_p IRQs"
+fi
+
+# ---------------------------------------------------------------- the owner's games
+# Commercial games and BIOS files the owner gave for local tests. They are
+# never in this repository: MESEN_CONTENT_DIR names a folder holding them
+# under their own names, and each check says SKIP when its file is absent.
+# The schedules are written here (waterbox/tests/make-schedule.py).
+cdir="${MESEN_CONTENT_DIR:-}"
+sched="$here/tests/make-schedule.py"
+content() { # name -> the file's path, or nothing
+	[ -n "$cdir" ] && [ -f "$cdir/$1" ] && printf '%s' "$cdir/$1"
+}
+gamedir() { # tag file settings -> a work dir holding the file as game.<ext>
+	local wd="$work/$1" ext="${2##*.}"
+	rm -rf "$wd" && mkdir -p "$wd"
+	cp "$2" "$wd/game.$ext"
+	printf '{"rom":["game.%s"]}' "$ext" > "$wd/slots"
+	[ -n "${3:-}" ] && printf '%s' "$3" > "$wd/settings"
+	echo "$wd"
+}
+sha1_is() { [ "$(sha1sum "$1" | cut -d' ' -f1)" = "$2" ]; }
+rhythm="$(content ym2608_adpcm_rom.bin)"
+[ -n "$rhythm" ] && ! sha1_is "$rhythm" 50b6c3e288eaa12ad275d4f323267bb72b0445df && rhythm=""
+# the same-machine checks a game gets: native == sandbox == sandboxed with a
+# save and a load around every frame
+same3() { # tag wd args... -> "ok" or what differed
+	local tag="$1" wd="$2"
+	shift 2
+	"$rn" "$wd" "$@" 2>"$work/$tag.nat.err" | digests > "$work/$tag.nat"
+	rw "$wd" "$@" 2>"$work/$tag.box.err" > "$work/$tag.raw"
+	digests < "$work/$tag.raw" > "$work/$tag.box"
+	rw "$wd" "$@" --rerecord 2>/dev/null | digests > "$work/$tag.rr"
+	if [ ! -s "$work/$tag.box" ] || [ "$(sed -n 's/^frames=//p' "$work/$tag.box")" = 0 ]; then
+		echo "the sandbox ran nothing: $(grep -v '^\[mesen\]' "$work/$tag.box.err" | head -1)"
+	elif ! cmp -s "$work/$tag.nat" "$work/$tag.box"; then
+		echo "native and sandbox differ: $(diff "$work/$tag.nat" "$work/$tag.box" | short)"
+	elif ! cmp -s "$work/$tag.box" "$work/$tag.rr"; then
+		echo "a save and a load around each frame changed the machine"
+	else
+		echo ok
+	fi
+}
+# a state saved half way by one process and loaded by another ends on the
+# straight run's machine
+session() { # tag wd at args...
+	local tag="$1" wd="$2" at="$3"
+	shift 3
+	finalDigests < "$work/$tag.raw" > "$work/$tag.straight"
+	rw "$wd" "$@" --save-at "$at" "$work/$tag.state" > "$work/$tag.save" 2>/dev/null
+	rw "$wd" "$@" --load-at "$at" "$work/$tag.state" 2>/dev/null | finalDigests > "$work/$tag.loaded"
+	grep -q "^savedAt=$at" "$work/$tag.save" && [ -s "$work/$tag.loaded" ] && cmp -s "$work/$tag.straight" "$work/$tag.loaded"
+}
+
+# The real rhythm ROM (YM2608/YMF288, SHA-1 50b6c3e2...) in this
+# repository's EPSM test program: the drums play from it in both flavors,
+# and the sound is neither the sound with no ROM nor with the made-up one.
+if [ -z "$rhythm" ]; then
+	report "epsm:real-rhythm" SKIP "needs ym2608_adpcm_rom.bin (SHA-1 50b6c3e2...) in MESEN_CONTENT_DIR"
+else
+	wr="$(workdir epsm-real epsm-test.nes)"
+	cp "$rhythm" "$wr/ymf288_adpcm_rom.bin"
+	"$rn" "$wr" --frames 600 --exercise --audio-out "$work/real.pcm" 2>"$work/real.err" | digests > "$work/real.nat"
+	rw "$wr" --frames 600 --exercise 2>/dev/null | digests > "$work/real.box"
+	dr="$(python3 -I "$here/tests/audio-diff.py" "$work/real.pcm" "$work/epsm.pcm")"
+	if ! grep -q 'EPSM rhythm ROM loaded' "$work/real.err"; then
+		report "epsm:real-rhythm" FAIL "Mesen did not take the file"
+	elif ! cmp -s "$work/real.nat" "$work/real.box"; then
+		report "epsm:real-rhythm" FAIL "native and sandbox differ"
+	elif [ "$(grep '^audioHash' "$work/real.box")" = "$(grep '^audioHash' "$work/fw.box")" ] || [ "$(grep '^audioHash' "$work/real.box")" = "$a_none" ]; then
+		report "epsm:real-rhythm" FAIL "the drums sound as with no ROM or the made-up one"
+	else
+		report "epsm:real-rhythm" PASS "the real rhythm ROM plays the drums, native == sandbox (sound RMS with it, with no ROM, and of the difference: $dr)"
+	fi
+fi
+
+# Sonic The Hedgehog (a Famicom cartridge with a plain iNES header) with
+# the EPSM plugged in by Expansion Port and the real rhythm ROM: 1800 frames
+# of the pad exercise reach the first level. The core's log says the EPSM is
+# there; the same machine natively, sandboxed and saved and loaded each
+# frame; a state across processes. What the EPSM added to the sound is
+# measured and said, not required: this file's program has no store to the
+# EPSM's registers at all.
+sonic="$(content 'Sonic The Hedgehog (FAMICOM 60 PIN GAME).nes')"
+if [ -z "$sonic" ] || [ -z "$rhythm" ]; then
+	report "game:sonic-epsm" SKIP "needs 'Sonic The Hedgehog (FAMICOM 60 PIN GAME).nes' and ym2608_adpcm_rom.bin in MESEN_CONTENT_DIR"
+else
+	ws="$(gamedir sonic "$sonic" '{"expansion":"epsm","epsmDrums":"on"}')"
+	cp "$rhythm" "$ws/ymf288_adpcm_rom.bin"
+	same="$(same3 sonic "$ws" --frames 1800 --exercise)"
+	"$rn" "$ws" --frames 1800 --exercise --audio-out "$work/sonic.pcm" > /dev/null 2>&1
+	wsn="$(gamedir sonic.none "$sonic" '{}')"
+	"$rn" "$wsn" --frames 1800 --exercise --audio-out "$work/sonic.none.pcm" 2>"$work/sonic.none.err" > /dev/null
+	added="$(python3 -I "$here/tests/audio-diff.py" "$work/sonic.pcm" "$work/sonic.none.pcm")"
+	if [ "$same" != ok ]; then
+		report "game:sonic-epsm" FAIL "$same"
+	elif ! grep -q 'EPSM present' "$work/sonic.nat.err" || ! grep -q 'EPSM present' "$work/sonic.box.err" || ! grep -q 'rhythm ROM loaded' "$work/sonic.box.err"; then
+		report "game:sonic-epsm" FAIL "the EPSM or its rhythm ROM is not there"
+	elif ! grep -q 'EPSM absent' "$work/sonic.none.err"; then
+		report "game:sonic-epsm" FAIL "the plain header plugged the EPSM in without the setting"
+	elif ! session sonic "$ws" 900 --frames 1800 --exercise; then
+		report "game:sonic-epsm" FAIL "a state saved at 900 and loaded by another process ends elsewhere"
+	else
+		report "game:sonic-epsm" PASS "1800 frames with the EPSM and the real rhythm ROM: native == sandbox == saved and loaded each frame; a state across processes; the EPSM added $added"
+	fi
+fi
+
+# Ai Senshi Nicol on the Famicom Disk System, with the real BIOS: Start on
+# the title, the game asks for side B, the disk comes out (Eject Disk held
+# 60 frames, Next Disk pressed) and goes back in as side B, and by frame
+# 5600 stage 1 is being played (Right held from 5700). Without the side
+# change the game is somewhere else at the end; without the BIOS the core
+# says so.
+nicol="$(content 'Ai Senshi Nicol (Japan).fds')"
+fdsbios="$(content FDS_disksys-nintendo.rom)"
+[ -n "$fdsbios" ] && ! sha1_is "$fdsbios" 57fe1bdee955bb48d357e463ccbf129496930b62 && fdsbios=""
+if [ -z "$nicol" ] || [ -z "$fdsbios" ]; then
+	report "game:fds-nicol" SKIP "needs 'Ai Senshi Nicol (Japan).fds' and FDS_disksys-nintendo.rom (SHA-1 57fe1bde...) in MESEN_CONTENT_DIR"
+else
+	wn="$(gamedir nicol "$nicol")"
+	"$rn" "$wn" --frames 10 > /dev/null 2> "$work/nicol.nobios"
+	cp "$fdsbios" "$wn/disksys.rom"
+	python3 -I "$sched" "$work/nicol.inputs" 6000 1800:10:p1=S 1850:10:p1=S 3800:60:@e '3810:2:@>' 5700:300:p1=R
+	python3 -I "$sched" "$work/nicol.noflip.inputs" 6000 1800:10:p1=S 1850:10:p1=S 5700:300:p1=R
+	same="$(same3 nicol "$wn" --inputs "$work/nicol.inputs")"
+	"$rn" "$wn" --inputs "$work/nicol.noflip.inputs" 2>/dev/null | digests > "$work/nicol.noflip"
+	# the last picture: stage 1 has many colours; the disk prompt and the
+	# BIOS's error screen are white letters on black
+	"$rn" "$wn" --inputs "$work/nicol.inputs" --screenshot "$work/nicol.tga" > /dev/null 2>&1
+	colours="$(python3 -I -c '
+import sys
+d = open(sys.argv[1], "rb").read()[18:]
+print(len({d[i:i + 3] for i in range(0, len(d), 4)}))' "$work/nicol.tga" 2>/dev/null)"
+	if ! grep -q 'error.no_fds_bios' "$work/nicol.nobios"; then
+		report "game:fds-nicol" FAIL "without the BIOS: $(grep -m1 'Init' "$work/nicol.nobios")"
+	elif [ "$same" != ok ]; then
+		report "game:fds-nicol" FAIL "$same"
+	elif ! grep -q 'Disk System: 2 disk sides' "$work/nicol.box.err"; then
+		report "game:fds-nicol" FAIL "the disk's two sides were not found"
+	elif [ "$(grep '^domain\[RAM\]' "$work/nicol.box")" = "$(grep '^domain\[RAM\]' "$work/nicol.noflip")" ]; then
+		report "game:fds-nicol" FAIL "changing to side B changed nothing"
+	elif [ "${colours:-0}" -lt 8 ]; then
+		report "game:fds-nicol" FAIL "the last picture has ${colours:-no} colours: stage 1 was not reached"
+	elif ! session nicol "$wn" 4500 --inputs "$work/nicol.inputs"; then
+		report "game:fds-nicol" FAIL "a state saved at 4500 and loaded by another process ends elsewhere"
+	else
+		report "game:fds-nicol" PASS "6000 frames, side B put in at the game's request and stage 1 played (the last picture has $colours colours): native == sandbox == saved and loaded each frame; a state across processes; without the BIOS the core says so"
+	fi
+fi
+
+# Duck Hunt with the Zapper in port 2: Game A, and on frame 760 the trigger
+# pulled with the Zapper on the first duck (its sprites' middle, x 172 and
+# y 118 of the picture, read off the sprite memory). The duck is hit: the
+# score's hundreds ($00C5) is 5. Pointed at empty sky, the same shot misses
+# (0). Native == sandbox both ways.
+duck="$(content 'Duck Hunt (World).nes')"
+if [ -z "$duck" ] && [ -n "$(content 'Duck Hunt.zip')" ]; then
+	mkdir -p "$work/duckzip"
+	python3 -I - "$cdir/Duck Hunt.zip" "$work/duckzip/Duck Hunt (World).nes" <<'PYZIP'
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+open(sys.argv[2], "wb").write(z.read("Duck Hunt (World).nes"))
+PYZIP
+	duck="$work/duckzip/Duck Hunt (World).nes"
+fi
+if [ -z "$duck" ] || [ ! -f "$duck" ]; then
+	report "game:duckhunt" SKIP "needs 'Duck Hunt (World).nes' or 'Duck Hunt.zip' in MESEN_CONTENT_DIR"
+else
+	wd="$(gamedir duck "$duck" '{"port2":"zapper"}')"
+	python3 -I "$sched" "$work/duck.hit" 1000 200:10:p1=S '740:40:@x=44032 y=32222' 760:3:@T
+	python3 -I "$sched" "$work/duck.miss" 1000 200:10:p1=S '740:40:@x=10000 y=10000' 760:3:@T
+	for s in hit miss; do
+		"$rn" "$wd" --inputs "$work/duck.$s" --dump-domain RAM "$work/duck.$s.ram" 2>/dev/null | digests > "$work/duck.$s.nat"
+		rw "$wd" --inputs "$work/duck.$s" 2>/dev/null | digests > "$work/duck.$s.box"
+	done
+	hit="$(od -An -tu1 -j197 -N1 "$work/duck.hit.ram" | tr -d ' ')"
+	miss="$(od -An -tu1 -j197 -N1 "$work/duck.miss.ram" | tr -d ' ')"
+	if ! cmp -s "$work/duck.hit.nat" "$work/duck.hit.box" || ! cmp -s "$work/duck.miss.nat" "$work/duck.miss.box"; then
+		report "game:duckhunt" FAIL "native and sandbox differ"
+	elif [ "$hit" = 5 ] && [ "$miss" = 0 ]; then
+		report "game:duckhunt" PASS "the Zapper on the duck hits it (score 500), on the sky misses (0); native == sandbox"
+	else
+		report "game:duckhunt" FAIL "score hundreds: on the duck $hit, on the sky $miss"
+	fi
+fi
+
+# The knob moves the paddle: Arkanoid with the NES's Arkanoid controller in
+# port 2 (started with the pad's Start) and Arkanoid II with the Famicom's
+# on the expansion port (started with the knob's button, which makes the
+# game take the knob instead of the pad). The knob held at 0 and at 160
+# from the start; the paddle's leftmost sprite at the end of 1500 frames.
+paddle_x() { python3 -I -c '
+import sys
+d = open(sys.argv[1], "rb").read()
+print(min((d[i + 3] for i in range(0, 256, 4) if 180 <= d[i] < 0xEF), default=-1))' "$1"; }
+ark_leg() { # name file settings knob start-event
+	local name="$1" file="$2" settings="$3" k="$4" start="$5" wd x0 x1 same=1
+	wd="$(gamedir "$name" "$file" "$settings")"
+	for v in 0 160; do
+		python3 -I "$sched" "$work/$name.$v" 1500 "$start" "100:1400:@$k=$v"
+		"$rn" "$wd" --inputs "$work/$name.$v" --dump-domain OAM "$work/$name.$v.oam" 2>/dev/null | digests > "$work/$name.$v.nat"
+		rw "$wd" --inputs "$work/$name.$v" 2>/dev/null | digests > "$work/$name.$v.box"
+		cmp -s "$work/$name.$v.nat" "$work/$name.$v.box" || same=0
+	done
+	x0="$(paddle_x "$work/$name.0.oam")"
+	x1="$(paddle_x "$work/$name.160.oam")"
+	if [ "$same" != 1 ]; then
+		report "game:$name" FAIL "native and sandbox differ"
+	elif [ "$x0" -ge 0 ] && [ $((x1 - x0)) -ge 100 ]; then
+		report "game:$name" PASS "knob 0: the paddle at x $x0, knob 160: at x $x1; native == sandbox"
+	else
+		report "game:$name" FAIL "the paddle at x $x0 with the knob at 0, $x1 at 160"
+	fi
+}
+ark="$(content 'Arkanoid (U) [!].nes')"
+if [ -z "$ark" ]; then
+	report "game:arkanoid" SKIP "needs 'Arkanoid (U) [!].nes' in MESEN_CONTENT_DIR"
+else
+	ark_leg arkanoid "$ark" '{"port2":"arkanoid"}' p 200:10:p1=S
+fi
+ark2="$(content 'Arkanoid II (Japan).nes')"
+if [ -z "$ark2" ]; then
+	report "game:arkanoid2" SKIP "needs 'Arkanoid II (Japan).nes' in MESEN_CONTENT_DIR"
+else
+	ark_leg arkanoid2 "$ark2" '{"expansion":"famicomArkanoid"}' k 200:10:@f
+fi
+
+# Players 3 and 4 through the Four Score: on the screen where players join
+# (R.C. Pro-Am II's initials, Indy Heat's cars), P3 and P4 press Start. With
+# the Four Score the game is another machine than without the presses; with
+# plain pads in the ports the presses reach nothing (the machine is the
+# idle one). Native == sandbox.
+four_leg() { # name file
+	local name="$1" file="$2" wd wp same=1
+	wd="$(gamedir "$name" "$file" '{"port1":"fourScore"}')"
+	wp="$(gamedir "$name.plain" "$file" '{"port2":"gamepad"}')"
+	python3 -I "$sched" "$work/$name.p34" 1300 700:5:p1=S 1000:5:p3=S 1060:5:p4=S
+	python3 -I "$sched" "$work/$name.p1" 1300 700:5:p1=S
+	for s in p34 p1; do
+		"$rn" "$wd" --inputs "$work/$name.$s" 2>/dev/null | digests > "$work/$name.$s.nat"
+		rw "$wd" --inputs "$work/$name.$s" 2>/dev/null | digests > "$work/$name.$s.box"
+		cmp -s "$work/$name.$s.nat" "$work/$name.$s.box" || same=0
+		"$rn" "$wp" --inputs "$work/$name.$s" 2>/dev/null | digests > "$work/$name.$s.plain"
+	done
+	if [ "$same" != 1 ]; then
+		report "game:$name" FAIL "native and sandbox differ"
+	elif cmp -s "$work/$name.p34.box" "$work/$name.p1.box"; then
+		report "game:$name" FAIL "players 3 and 4 pressing Start changed nothing"
+	elif ! cmp -s "$work/$name.p34.plain" "$work/$name.p1.plain"; then
+		report "game:$name" FAIL "without the Four Score the presses still reached the game"
+	else
+		report "game:$name" PASS "players 3 and 4 join through the Four Score (not without it); native == sandbox"
+	fi
+}
+for g in "rcproam2:R.C. Pro-Am II (U) [!].nes" "indyheat:Danny Sullivan's Indy Heat (U) [!].nes"; do
+	f="$(content "${g#*:}")"
+	if [ -z "$f" ]; then
+		report "game:${g%%:*}" SKIP "needs '${g#*:}' in MESEN_CONTENT_DIR"
+	else
+		four_leg "${g%%:*}" "$f"
+	fi
+done
+
 # ---------------------------------------------------------------- the build
 # No network code in the guest (patches/0006, user-decided 2026-10-31).
 if nn="$("$here/tests/check-no-network.sh" "$gst/core.wbx" 2>&1)"; then
@@ -605,35 +886,51 @@ if [ -n "${CHIMERA_ROOT:-}" ] && [ -x "$runner" ] && [ -f "$package" ]; then
 
 	# What the core suggests for a game (the new-project window asks before
 	# the game boots): the EPSM's drums for a cartridge whose header has the
-	# EPSM, nothing for one without.
+	# EPSM; the EPSM in the expansion port and its drums for one whose header
+	# does not but whose program writes the EPSM's registers (the test
+	# program with a plain header); nothing for Nova.
 	"$runner" --new-project "$work/sg.epsm.chimeraProject" "$package" "$root/tests/roms/epsm-test.nes" > /dev/null 2>&1
 	"$runner" --new-project "$work/sg.nova.chimeraProject" "$package" "$root/tests/roms/nova.nes" > /dev/null 2>&1
+	"$runner" --new-project "$work/sg.plain.chimeraProject" "$package" "$root/tests/roms/epsm-absent.nes" > /dev/null 2>&1
 	sg_e="$("$runner" --project "$work/sg.epsm.chimeraProject" "$package" --files "$root/tests/roms" --suggest 2>&1 | tail -1)"
 	sg_n="$("$runner" --project "$work/sg.nova.chimeraProject" "$package" --files "$root/tests/roms" --suggest 2>&1 | tail -1)"
-	if printf '%s' "$sg_e" | grep -q '"epsmDrums": "on"' && printf '%s' "$sg_n" | grep -q '"values": {}'; then
-		report "engine:suggest" PASS "EPSM Drums suggested for the EPSM cartridge, nothing for Nova"
+	sg_p="$("$runner" --project "$work/sg.plain.chimeraProject" "$package" --files "$root/tests/roms" --suggest 2>&1 | tail -1)"
+	if printf '%s' "$sg_e" | grep -q '"epsmDrums": "on"' && printf '%s' "$sg_n" | grep -q '"values": {}' \
+		&& printf '%s' "$sg_p" | grep -q '"expansion": "epsm"' && printf '%s' "$sg_p" | grep -q '"epsmDrums": "on"'; then
+		report "engine:suggest" PASS "EPSM Drums for the EPSM header; EPSM in the expansion port and its drums for the plain header whose program writes the EPSM; nothing for Nova"
 	else
-		report "engine:suggest" FAIL "EPSM cartridge: $sg_e / Nova: $sg_n"
+		report "engine:suggest" FAIL "EPSM header: $sg_e / plain header: $sg_p / Nova: $sg_n"
 	fi
 
-	# The rhythm ROM through Chimera: a project with EPSM Drums on, given the
-	# firmware, mounts it where Mesen looks; given none, the core says the
-	# drums are silent.
-	python3 -I - "$work/rhythm.bin" <<'PYROM'
-import random, sys
-r = random.Random(410)
-open(sys.argv[1], "wb").write(bytes(r.randrange(256) for _ in range(8192)))
-PYROM
-	"$runner" --new-project "$work/fw.chimeraProject" "$package" "$root/tests/roms/epsm-test.nes" \
-		--settings '{"epsmDrums":"on"}' --firmware "ymf288_adpcm_rom.bin=$work/rhythm.bin" > /dev/null 2>&1
-	"$runner" --project "$work/fw.chimeraProject" "$package" --files "$root/tests/roms" \
-		--firmware "ymf288_adpcm_rom.bin=$work/rhythm.bin" --frames 30 --record "$work/fw.txt" > "$work/fw.log" 2>&1
+	# The rhythm ROM through Chimera. The package pins its SHA-1 (Chimera's
+	# firmware window then takes only that file; chimera-run mounts whatever
+	# it is given and records its hash, so the pin itself is read from the
+	# package here). The real file (MESEN_CONTENT_DIR) is mounted where
+	# Mesen looks; with no file the core says the drums are silent.
+	pin="$(unzip -p "$package" waterbox.config 2>/dev/null | python3 -I -c '
+import json, sys
+c = json.load(sys.stdin)
+print(" ".join(f["id"] + "=" + f.get("sha1", "none").lower() for f in c.get("firmware", [])))')"
+	"$runner" --new-project "$work/fw.chimeraProject" "$package" "$root/tests/roms/epsm-test.nes" > /dev/null 2>&1
 	"$runner" --project "$work/fw.chimeraProject" "$package" --files "$root/tests/roms" \
 		--frames 30 --record "$work/fw2.txt" > "$work/fw2.log" 2>&1
-	if grep -q 'EPSM rhythm ROM loaded' "$work/fw.log" && grep -q 'EPSM rhythm ROM missing' "$work/fw2.log"; then
-		report "engine:epsm-firmware" PASS "the rhythm ROM given to Chimera reaches Mesen; without it the core says the drums are silent"
+	if ! printf '%s' "$pin" | grep -q 'ymf288_adpcm_rom.bin=50b6c3e288eaa12ad275d4f323267bb72b0445df' \
+		|| ! printf '%s' "$pin" | grep -q 'disksys.rom=57fe1bdee955bb48d357e463ccbf129496930b62'; then
+		report "engine:epsm-firmware" FAIL "the package's firmware pins: $pin"
+	elif ! grep -q 'EPSM rhythm ROM missing' "$work/fw2.log"; then
+		report "engine:epsm-firmware" FAIL "without the file: $(grep -m1 'rhythm\|chimera-run' "$work/fw2.log")"
+	elif [ -z "$rhythm" ]; then
+		report "engine:epsm-firmware" PASS "the package pins the rhythm ROM's and the Disk System BIOS's SHA-1; without the ROM the drums are silent; the real ROM was not given (MESEN_CONTENT_DIR), so its way in was not tried"
 	else
-		report "engine:epsm-firmware" FAIL "with the file: $(grep -m1 'rhythm\|chimera-run' "$work/fw.log"); without: $(grep -m1 'rhythm\|chimera-run' "$work/fw2.log")"
+		"$runner" --new-project "$work/fwr.chimeraProject" "$package" "$root/tests/roms/epsm-test.nes" \
+			--settings '{"epsmDrums":"on"}' --firmware "ymf288_adpcm_rom.bin=$rhythm" > /dev/null 2>&1
+		"$runner" --project "$work/fwr.chimeraProject" "$package" --files "$root/tests/roms" \
+			--firmware "ymf288_adpcm_rom.bin=$rhythm" --frames 30 --record "$work/fwr.txt" > "$work/fwr.log" 2>&1
+		if grep -q 'EPSM rhythm ROM loaded' "$work/fwr.log"; then
+			report "engine:epsm-firmware" PASS "the package pins the rhythm ROM's and the Disk System BIOS's SHA-1; the real rhythm ROM given to Chimera reaches Mesen; without it the drums are silent"
+		else
+			report "engine:epsm-firmware" FAIL "the real rhythm ROM did not reach Mesen: $(grep -m1 'rhythm\|chimera-run' "$work/fwr.log")"
+		fi
 	fi
 
 	# A movie through Chimera's engine: Nova's schedule written as a Chimera
@@ -698,6 +995,49 @@ PYMOV
 		report "engine:devices" FAIL "$devfail"
 	fi
 
+	# The owner's games through Chimera (only with MESEN_CONTENT_DIR): a
+	# schedule written as a Chimera movie with the machine's active controls,
+	# made into a project by one chimera-run and played by another, ends on
+	# the native reference's RAM. Sonic with the EPSM in the expansion port
+	# and the real rhythm ROM (Start on the title, then Right); Ai Senshi
+	# Nicol with the side change made by the movie's Eject Disk and Next Disk.
+	engine_game() { # check tag file settings movie-device inputs frames firmware-id firmware [log line]
+		local check="$1" tag="$2" file="$3" settings="$4" dev="$5" inputs="$6" n="$7" fwid="$8" fw="$9" want="${10:-}" ext="${3##*.}" got
+		local pd="$work/eg.$tag" wd
+		rm -rf "$pd" && mkdir -p "$pd" && cp "$file" "$pd/game.$ext"
+		wd="$(gamedir "eg.$tag.native" "$file" "$settings")"
+		cp "$fw" "$wd/$fwid"
+		"$rn" "$wd" --inputs "$inputs" --dump-domain RAM "$work/eg.$tag.native.ram" > /dev/null 2>&1
+		python3 -I "$dev_py" movie "$dev" "$inputs" "$work/eg.$tag.movie.txt"
+		"$runner" --new-project "$pd/$tag.chimeraProject" "$package" "$pd/game.$ext" "$work/eg.$tag.movie.txt" \
+			--settings "$settings" --firmware "$fwid=$fw" > "$work/eg.$tag.make.log" 2>&1
+		"$runner" --project "$pd/$tag.chimeraProject" "$package" --files "$pd" --firmware "$fwid=$fw" \
+			--dump "RAM=$work/eg.$tag.engine.ram" --meta "$work/eg.$tag.meta" > "$work/eg.$tag.log" 2>&1
+		got=$(sed -n 's/^frames=//p' "$work/eg.$tag.meta" 2> /dev/null)
+		if [ "${got:-0}" != "$n" ]; then
+			report "$check" FAIL "the movie played ${got:-no} frames, not $n: $(tail -1 "$work/eg.$tag.log")"
+		elif [ -n "$want" ] && ! grep -q "$want" "$work/eg.$tag.log"; then
+			report "$check" FAIL "the log does not say '$want'"
+		elif ! cmp -s "$work/eg.$tag.native.ram" "$work/eg.$tag.engine.ram"; then
+			report "$check" FAIL "the movie through Chimera ends on another RAM than the native run"
+		else
+			report "$check" PASS "a $n-frame movie made into a project and replayed by another chimera-run ends on the native reference's RAM${want:+; the log says '$want'}"
+		fi
+	}
+	dev_py="$dev"
+	if [ -n "${sonic:-}" ] && [ -n "$rhythm" ]; then
+		python3 -I "$sched" "$work/eg.sonic.inputs" 1200 400:10:p1=S 700:500:p1=R 900:20:p1=A
+		engine_game engine:sonic-epsm sonic "$sonic" '{"expansion":"epsm","epsmDrums":"on"}' pad "$work/eg.sonic.inputs" 1200 \
+			ymf288_adpcm_rom.bin "$rhythm" 'EPSM present'
+	else
+		report "engine:sonic-epsm" SKIP "needs Sonic The Hedgehog and ym2608_adpcm_rom.bin in MESEN_CONTENT_DIR"
+	fi
+	if [ -n "${nicol:-}" ] && [ -n "${fdsbios:-}" ]; then
+		engine_game engine:fds-nicol nicol "$nicol" '{}' fds "$work/nicol.inputs" 6000 disksys.rom "$fdsbios" 'Disk System: 2 disk sides'
+	else
+		report "engine:fds-nicol" SKIP "needs 'Ai Senshi Nicol (Japan).fds' and FDS_disksys-nintendo.rom in MESEN_CONTENT_DIR"
+	fi
+
 	# FamiStudio's EPSM songs through Chimera (only with MESEN_FAMISTUDIO_ROMS):
 	# a 900-frame schedule (P1 Right, Left, A and B held now and then, which
 	# FamiStudio's player reads) written as a Chimera movie, made into a
@@ -749,7 +1089,7 @@ PYFS
 		report "engine:famistudio" SKIP "needs MESEN_FAMISTUDIO_ROMS (FamiStudio's exported songs, not in this repository)"
 	fi
 else
-	report "engine:*" SKIP "6 checks: need CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
+	report "engine:*" SKIP "8 checks: need CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
 fi
 
 echo ""

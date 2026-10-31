@@ -8,6 +8,8 @@
         famicomArkanoid and fourPlayerAdapter (240 frames, every control
         moving)
     input-devices.py movie <device> <in.inputs> <out.txt>
+        (<device> may also be "pad", a pad in port 1 and nothing else, or
+        "fds", the same with the Disk System's drive)
         the same schedule as a Chimera movie for a project whose ports hold
         <device>: an entry's groups are the console's, then each player's,
         a group's axes first (5 wide and a comma), then its buttons' letters,
@@ -62,7 +64,7 @@ def parse(line):
             pads.append({c for c in f if c != "."})
     held, axes = set(), dict(NEUTRAL)
     for tok in extra.split():
-        if tok in ("T", "F", "t", "f"):
+        if tok in ("T", "F", "t", "f", "<", ">", "e"):
             held.add(tok)
         else:
             k, v = tok.split("=")
@@ -83,6 +85,9 @@ def movie(device, lines):
             console = "%5d,%5d,%s%s" % (axes["X"], axes["Y"], console, "T" if "t" in held else ".")
         elif device == "famicomArkanoid":
             console = "%5d,%s%s" % (axes["k"], console, "F" if "f" in held else ".")
+        if device == "fds":
+            # the Disk System's drive: Previous Disk, Next Disk, Eject Disk
+            console += "".join(c if c in held else "." for c in "<>e")
         groups = [console, pad(0)]
         if device in FOUR:
             groups += [pad(1), pad(2), pad(3)]

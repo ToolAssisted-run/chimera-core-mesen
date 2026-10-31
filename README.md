@@ -4,8 +4,8 @@
 the community edition of Mesen 2, built into
 [miniBox](https://github.com/ToolAssisted-run/chimera-common-minibox)'s
 sandbox and packaged for [Chimera](https://github.com/ToolAssisted-run/chimera),
-a frontend for tool-assisted speedruns. It runs NES games, with Mesen's
-accuracy and the **EPSM** sound expansion (a Yamaha YMF288 on the Famicom's
+a frontend for tool-assisted speedruns. It runs NES and Famicom Disk System
+games, with Mesen's accuracy and the **EPSM** sound expansion (a Yamaha YMF288 on the Famicom's
 expansion port) that some new NES games use. The controller ports hold a
 pad, the Four Score (four players), the Zapper or the Arkanoid controller;
 the Famicom's expansion port holds its own Zapper, its Arkanoid controller
@@ -22,11 +22,16 @@ take it from this repository's releases once there are some, and put
 `mesen.chimeraCore` in Chimera's cores folder. Game files are not included.
 
 An EPSM game says so in its NES 2.0 header, and Mesen then plugs the EPSM
-in. Its music and sound effects play with nothing more. Its drums play
-samples from the chip's own ROM: turn on the setting **EPSM Drums** (the
-new-project window suggests it for an EPSM game) and give Chimera the
-8 KiB file `ymf288_adpcm_rom.bin` (the same data as MAME's
-`ym2608_adpcm_rom.bin`).
+in. For a file with a plain iNES header, choose **EPSM** under **Expansion
+Port** (the new-project window suggests it when the game's program writes
+the EPSM's registers). The drums play samples from the chip's own ROM: turn
+on **EPSM Drums** and give Chimera the 8 KiB rhythm ROM
+(`ym2608_adpcm_rom.bin`, SHA-1 `50b6c3e2...`).
+
+Famicom Disk System games (.fds, all sides in one file) need the Disk
+System's BIOS (`disksys.rom`, SHA-1 `57fe1bde...`). The first side is in the
+drive at power on; **Eject Disk** takes the disk out while held, **Previous
+Disk** and **Next Disk** choose the side that goes back in.
 
 ## Build and test
 
