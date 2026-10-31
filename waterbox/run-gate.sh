@@ -170,6 +170,24 @@ else
 	report "time:stall" PASS "a 300 ms stop of the host at frame 1500 changes nothing, native or sandboxed"
 fi
 
+# ---------------------------------------------------------------- the system bus
+# A tool reading the whole 64 KiB bus after every frame (RAM Search, a hex
+# editor) must leave the machine as it was: the run with the reads is the
+# run without them. The bus reads the same in both flavors, and its first
+# 2 KiB is the RAM domain.
+rw "$wd" "${args[@]}" --look 2>/dev/null > "$work/look.raw"
+"$rn" "$wd" "${args[@]}" --look 2>/dev/null > "$work/look.nat"
+digests < "$work/look.raw" > "$work/look.box"
+if ! cmp -s "$work/nova.box" "$work/look.box"; then
+	report "bus:look" FAIL "reading the bus changed the machine: $(diff "$work/nova.box" "$work/look.box" | short)"
+elif [ "$(grep '^busHash' "$work/look.raw")" != "$(grep '^busHash' "$work/look.nat")" ] || [ -z "$(grep '^busHash' "$work/look.raw")" ]; then
+	report "bus:look" FAIL "the bus reads differently in the two flavors"
+elif ! grep -q '^busIsRam=1' "$work/look.raw"; then
+	report "bus:look" FAIL "the bus's first 2 KiB is not the RAM domain"
+else
+	report "bus:look" PASS "the whole bus read after each of 3000 frames: same machine, same bus in both flavors, \$0000-\$07FF is RAM"
+fi
+
 # ---------------------------------------------------------------- the EPSM
 # The same program with and without the EPSM header: the machine (RAM,
 # picture) is the same, the sound is not, and only the EPSM one makes any.
@@ -399,12 +417,14 @@ PYMOV
 	"$rn" "$work/nova" "${args[@]}" --dump-domain RAM "$work/mv.native.ram" > /dev/null 2>&1
 	"$runner" --new-project "$work/mv.chimeraProject" "$package" "$root/tests/roms/nova.nes" "$work/nova.movie.txt" > "$work/mv.make.log" 2>&1
 	"$runner" --project "$work/mv.chimeraProject" "$package" --files "$root/tests/roms" \
-		--dump "RAM=$work/mv.engine.ram" --meta "$work/mv.meta" > "$work/mv.log" 2>&1
+		--dump "RAM=$work/mv.engine.ram" --dump "System Bus@0+800=$work/mv.engine.bus" --meta "$work/mv.meta" > "$work/mv.log" 2>&1
 	mvframes=$(sed -n 's/^frames=//p' "$work/mv.meta" 2> /dev/null)
 	if [ "${mvframes:-0}" != 3000 ]; then
 		report "engine:movie" FAIL "the movie played ${mvframes:-no} frames, not 3000: $(tail -1 "$work/mv.log")"
+	elif ! cmp -s "$work/mv.engine.ram" "$work/mv.engine.bus"; then
+		report "engine:movie" FAIL "Chimera's view of the system bus at \$0000-\$07FF is not the RAM domain"
 	elif cmp -s "$work/mv.native.ram" "$work/mv.engine.ram"; then
-		report "engine:movie" PASS "Nova's 3000-frame schedule as a Chimera movie ends on the native reference's RAM"
+		report "engine:movie" PASS "Nova's 3000-frame schedule as a Chimera movie ends on the native reference's RAM, which the system bus shows too"
 	else
 		report "engine:movie" FAIL "the movie through Chimera ends on another RAM than the native run"
 	fi

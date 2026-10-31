@@ -42,6 +42,7 @@
 #include "Shared/Interfaces/IInputProvider.h"
 #include "Shared/Interfaces/IConsole.h"
 #include "NES/NesConsole.h"
+#include "NES/NesMemoryManager.h"
 #include "NES/GameDatabase.h"
 #include "NES/Input/NesController.h"
 #include "Utilities/FolderUtilities.h"
@@ -527,6 +528,54 @@ ECL_EXPORT int GetMemoryDomainWritable(int i)
 {
 	int k = domain_kind(i);
 	return k >= 0 && kDomains[k].type != MemoryType::NesPrgRom && kDomains[k].type != MemoryType::NesChrRom;
+}
+
+/* ---- the system bus: the CPU's 64 KiB as the CPU sees it ----
+ * Read and written through Mesen's debugger accessors (PeekRam and
+ * DebugWrite), which have no side effects: reading $2002 does not clear the
+ * vertical blank, and a write lands only in RAM and the cartridge's memory,
+ * never in a register. */
+static NesMemoryManager *bus_memory()
+{
+	if (!g_emu)
+		return NULL;
+	NesConsole *nes = dynamic_cast<NesConsole *>(g_emu->GetConsoleUnsafe());
+	return nes ? nes->GetMemoryManager() : NULL;
+}
+
+ECL_EXPORT int GetBusCount(void) { return 1; }
+ECL_EXPORT const char *GetBusName(int i) { return i == 0 ? "System Bus" : NULL; }
+ECL_EXPORT int64_t GetBusSize(int i) { return i == 0 ? 0x10000 : 0; }
+ECL_EXPORT int GetBusWritable(int i) { return i == 0; }
+
+ECL_EXPORT int PeekBus(int bus, int addr)
+{
+	NesMemoryManager *m = bus_memory();
+	if (bus != 0 || m == NULL || addr < 0 || addr > 0xFFFF)
+		return 0;
+	return m->DebugRead((uint16_t)addr);
+}
+
+ECL_EXPORT void PokeBus(int bus, int addr, int value)
+{
+	NesMemoryManager *m = bus_memory();
+	if (bus != 0 || m == NULL || addr < 0 || addr > 0xFFFF)
+		return;
+	m->DebugWrite((uint16_t)addr, (uint8_t)value, true);
+}
+
+/* up to 64 KiB of the bus at once, into memory no savestate carries */
+ECL_INVISIBLE static uint8_t g_busRead[0x10000];
+ECL_EXPORT const uint8_t *ReadBus(int32_t bus, int64_t addr, int32_t len)
+{
+	NesMemoryManager *m = bus_memory();
+	if (len > (int32_t)sizeof g_busRead)
+		len = (int32_t)sizeof g_busRead;
+	for (int32_t i = 0; i < len; i++) {
+		int64_t a = addr + i;
+		g_busRead[i] = (bus == 0 && m != NULL && a >= 0 && a <= 0xFFFF) ? m->DebugRead((uint16_t)a) : 0;
+	}
+	return g_busRead;
 }
 
 /* ---- save data: the battery-backed RAM of the cartridge ---- */

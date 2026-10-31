@@ -52,6 +52,8 @@ struct gate_core
 	 * in the native reference, which has no machine outside its process */
 	int (*save_state)(const char *path);
 	int (*load_state)(const char *path);
+	/* the system bus as a tool reads it (the look option) */
+	const uint8_t *(*read_bus)(int32_t bus, int64_t addr, int32_t len);
 };
 
 struct gate_opts
@@ -71,6 +73,7 @@ struct gate_opts
 	const char *savePath; /* ...the machine is written here and the run ends */
 	const char *loadPath; /* or: the run starts from this machine... */
 	long loadAt;          /* ...at this frame of the schedule */
+	int look;             /* read the whole system bus after every frame, as a tool would */
 };
 
 static uint64_t gate_fnv(uint64_t h, const void *p, size_t n)
@@ -226,6 +229,8 @@ static int gate_run(const struct gate_core *c, const struct gate_opts *o)
 			gate_exercise_pad(o->loadAt - 1, prev);
 	}
 	uint64_t lastFrame = 0;
+	uint64_t busHash = 0;
+	int busIsRam = 1;
 
 	for (long f = o->loadPath ? o->loadAt : 0; f < frames; f++)
 	{
@@ -295,6 +300,16 @@ static int gate_run(const struct gate_core *c, const struct gate_opts *o)
 		if (!c->input_was_read())
 			lag++;
 
+		if (o->look && c->read_bus)
+		{
+			const uint8_t *bus = c->read_bus(0, 0, 0x10000);
+			busHash = gate_fnv(busHash, bus, 0x10000);
+			/* $0000-$07FF of the bus is the console's 2 KiB of RAM */
+			for (int i = 0; i < c->domain_count(); i++)
+				if (!strcmp(c->domain_name(i), "RAM") && memcmp(bus, c->domain_ptr(i), 0x800) != 0)
+					busIsRam = 0;
+		}
+
 		if (o->screenshotPath && f == frames - 1)
 			gate_write_tga(o->screenshotPath, video, w, h);
 	}
@@ -309,6 +324,8 @@ static int gate_run(const struct gate_core *c, const struct gate_opts *o)
 	printf("lastFrameHash=%016llx\n", (unsigned long long)lastFrame);
 	printf("audioSamples=%ld\n", samples);
 	printf("lagFrames=%ld\n", lag);
+	if (o->look)
+		printf("busHash=%016llx\nbusIsRam=%d\n", (unsigned long long)busHash, busIsRam);
 	int nd = c->domain_count();
 	for (int i = 0; i < nd; i++)
 	{
@@ -370,6 +387,7 @@ static int gate_parse_opts(int argc, char **argv, int first, struct gate_opts *o
 		else if (!strcmp(argv[i], "--audio-out") && i + 1 < argc) o->audioPath = argv[++i];
 		else if (!strcmp(argv[i], "--save-at") && i + 2 < argc) { o->saveAt = strtol(argv[++i], 0, 0); o->savePath = argv[++i]; }
 		else if (!strcmp(argv[i], "--load-at") && i + 2 < argc) { o->loadAt = strtol(argv[++i], 0, 0); o->loadPath = argv[++i]; }
+		else if (!strcmp(argv[i], "--look")) o->look = 1;
 		else if (!strcmp(argv[i], "--rerecord")) ; /* run-wbx's; ignored here */
 		else { fprintf(stderr, "unknown argument %s\n", argv[i]); return 0; }
 	}

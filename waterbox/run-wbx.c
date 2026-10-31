@@ -68,6 +68,9 @@ static ptrfn_i32 g_GetSaveDataFileName, g_GetSaveDataFileBuffer;
 static i64fn_i32 g_GetSaveDataFileSize;
 static voidfn_i g_SetRenderingEnabled;
 static int g_rerecord;
+typedef uintptr_t (MB_GUEST_ABI *readbusfn)(int32_t, int64_t, int32_t);
+static readbusfn g_ReadBus;
+static const uint8_t *core_read_bus(int32_t bus, int64_t addr, int32_t len) { return (const uint8_t *)g_ReadBus(bus, addr, len); }
 static membuf g_state;
 
 static uintptr_t proc(mb_host *h, const char *n)
@@ -223,6 +226,7 @@ int main(int argc, char **argv)
 	g_GetSaveDataFileName = (ptrfn_i32)proc(g_host, "GetSaveDataFileName");
 	g_GetSaveDataFileSize = (i64fn_i32)proc(g_host, "GetSaveDataFileSize");
 	g_GetSaveDataFileBuffer = (ptrfn_i32)proc(g_host, "GetSaveDataFileBuffer");
+	g_ReadBus = (readbusfn)proc(g_host, "ReadBus");
 
 	struct gate_core c = {
 		.init = core_init,
@@ -245,6 +249,7 @@ int main(int argc, char **argv)
 		.pre_frame = core_pre_frame,
 		.save_state = core_save_state,
 		.load_state = core_load_state,
+		.read_bus = core_read_bus,
 		.set_rendering = core_set_rendering,
 	};
 

@@ -287,6 +287,20 @@ Power, against the same schedule without Power.
   about 770 frames a second; the EPSM test program about 600 (ymfm runs at
   the chip's 8 MHz).
 
+## 2026-10-31: the system bus
+
+The core exports one bus, "System Bus": the CPU's 64 KiB as the CPU sees
+it, read with Mesen's debugger accessor (`NesMemoryManager::DebugRead`,
+each handler's `PeekRam`) and written with `DebugWrite` (RAM and the
+cartridge's memory only, never a register). `ReadBus` fills up to 64 KiB at
+once into memory no savestate carries. Checked: `bus:look` reads the whole
+bus after each of Nova's 3000 frames and the machine is the one of the run
+without the reads, the bus is the same in both flavors and its first 2 KiB
+is the RAM domain; `engine:movie` reads $0000-$07FF through chimera-run and
+it is the RAM. Seen to fail: `ReadBus` with Mesen's ordinary `Read` (which
+has side effects: reading $2002 clears the vertical blank) changed the
+picture, the lag count and the memory.
+
 ## Where this stands (2026-10-31)
 
 Works, and is tested here on Linux:
@@ -295,10 +309,10 @@ Works, and is tested here on Linux:
   homebrew games and the EPSM test program; savestates within a process and
   across processes; turbo; virtual time; the EPSM present or absent by the
   header; the rhythm ROM reaching the chip; settings; saved games in and
-  out and across a power cycle; the package, its contract tests, its texts
+  out and across a power cycle; the system bus; the package, its contract tests, its texts
   in 26 languages; chimera-run (input polls, suggestions, firmware, a
   movie); Chimera's window (5 checks).
-- Commands and counts: `run-gate.sh` 26 ok (30 with `CHIMERA_ROOT`),
+- Commands and counts: `run-gate.sh` 27 ok (31 with `CHIMERA_ROOT`),
   `run-frontend.sh` 5 ok, `test-packages` 21 PASS, `check-core-texts.py`
   37 keys.
 
@@ -323,14 +337,14 @@ Not done, or not proved:
 - Devices: only the standard pad on ports 1 and 2. The Zapper, Four Score,
   Arkanoid paddle, Famicom expansion devices and the Famicom Disk System
   (which needs its BIOS) are not offered.
-- No system bus is exported (RAM Search works on the domains: RAM, WRAM,
-  Battery RAM, Mapper RAM, CIRAM, PALRAM, OAM, CHR RAM/ROM, PRG ROM).
+- The PPU's bus is not exported (the CPU's is; the PPU's memory is in the
+  domains CIRAM, PALRAM, OAM, CHR RAM/ROM).
 - CI is written and has never run (no remote).
 - Upstream's own test ROM suite (Mesen's `.mtp` recorded tests) is not run:
   the test ROMs are not in the MesenCE repository.
 
 Next, in order: the owner's answers below; an EPSM game from the owner;
-the Windows run; a system bus; the Zapper and Four Score; then the other
+the Windows run; the Zapper and Four Score; then the other
 systems, the SNES and the GBA first.
 
 Traps, for whoever continues (each one cost time here):

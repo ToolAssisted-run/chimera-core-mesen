@@ -35,6 +35,7 @@ extern int32_t GetSaveDataFileCount(void);
 extern const char *GetSaveDataFileName(int32_t i);
 extern int64_t GetSaveDataFileSize(int32_t i);
 extern const uint8_t *GetSaveDataFileBuffer(int32_t i);
+extern const uint8_t *ReadBus(int32_t bus, int64_t addr, int32_t len);
 
 static void frame(void) { FrameAdvance(0); }
 static const uint32_t *video(int *w, int *h)
@@ -87,6 +88,7 @@ int main(int argc, char **argv)
 		.savedata_buffer = GetSaveDataFileBuffer,
 		.pre_frame = NULL,
 		.set_rendering = SetRenderingEnabled,
+		.read_bus = ReadBus,
 	};
 	return gate_run(&c, &o);
 }
