@@ -25,3 +25,10 @@ All of these may be distributed. None is a commercial game.
   the Arkanoid controller.
 
 The input schedules in `tests/inputs/` were written for this repository.
+
+- `snes-test.sfc` - this repository's own Super NES test program, built by
+  `tests/snes-test/make-snes-test.py`: it keeps what it reads from the
+  controller ports (two pads, or five through the multitap) in its RAM and
+  shows pad 1 as the backdrop colour. The same script builds, at test time,
+  the same program with the headers of the cartridges that have a DSP-1 to
+  4, ST010, ST011 or ST018 chip.

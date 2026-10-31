@@ -1,5 +1,5 @@
 {
-  "_comment": "Default bindings for the controller this package declares: the frontend uses them for a controller the user's setup has never seen, and Config > Controls' Defaults button comes back to them. Pad 1 is bound to keys and a gamepad; pads 2 to 4 are left unbound. The Zapper and the Arkanoid controller (in port 2 or in the Famicom's expansion port) follow the mouse: its place over the picture is where the Zapper points and where the knob is, its left button the trigger and the knob's button. Power and Reset are left unbound so that no key press restarts a run by accident.",
+  "_comment": "Default bindings for the controllers this package declares (the NES's, and one for each other machine): the frontend uses them for a controller the user's setup has never seen, and Config > Controls' Defaults button comes back to them. Player 1 of each is bound to keys and a gamepad; the other players are left unbound. The NES's Zapper and Arkanoid controller (in port 2 or in the Famicom's expansion port) follow the mouse: its place over the picture is where the Zapper points and where the knob is, its left button the trigger and the knob's button. Power and Reset are left unbound so that no key press restarts a run by accident.",
   "AllTrollers": {
     "NES Controller": {
       "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
@@ -14,6 +14,20 @@
       "P2 Fire": "WMouse L",
       "Expansion Trigger": "WMouse L",
       "Expansion Fire": "WMouse L"
+    },
+    "SNES Controller": {
+      "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
+      "P1 Down": "Down, J1 POV0D, X1 DpadDown, X1 LStickDown",
+      "P1 Left": "Left, J1 POV0L, X1 DpadLeft, X1 LStickLeft",
+      "P1 Right": "Right, J1 POV0R, X1 DpadRight, X1 LStickRight",
+      "P1 Select": "Space, J1 B9, X1 Back",
+      "P1 Start": "Enter, J1 B10, X1 Start",
+      "P1 B": "Z, J1 B1, X1 A",
+      "P1 A": "X, J1 B2, X1 B",
+      "P1 Y": "A, J1 B3, X1 X",
+      "P1 X": "S, J1 B4, X1 Y",
+      "P1 L": "Q, J1 B5, X1 LeftShoulder",
+      "P1 R": "W, J1 B6, X1 RightShoulder"
     }
   },
   "AllTrollersAutoFire": {

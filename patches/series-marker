@@ -1,4 +1,4 @@
 # The string the last patch of the series adds. waterbox/apply-patches.sh
 # takes a tree that has it to have the whole series. Change it whenever a
 # patch is added at the end.
-# marker: MESEN_EXPANSION_EPSM
+# marker: MESEN_BARE_FOLDERLESS

@@ -1,7 +1,10 @@
 # Building the Mesen core
 
 This repository builds MesenCE as a sandboxed guest (`core.wbx`) and
-packages it as one file, `mesen.chimeraCore`, which Chimera loads as an NES.
+packages it as one file, `mesen.chimeraCore`, which Chimera loads as the
+NES and as each other system Mesen emulates that the package offers so far
+(the Super NES and the Super Game Boy), picked by a project's setting
+`machine`.
 
 Two placeholders are used throughout:
 
@@ -108,19 +111,40 @@ differ.
 ./waterbox/run-gate.sh
 ```
 
-It needs `run-native`, `run-wbx` and `core.wbx` built, and builds nothing.
-It ends with `<n> ok, <m> failed`; without Chimera it is 41 checks, a line
-saying the checks that need Chimera were skipped, and one saying the
-FamiStudio checks were skipped (below). With
+It needs `run-native`, `run-wbx` and `core.wbx` built, and builds nothing
+(it builds the Super NES chip test cartridges it needs into its work
+folder). It ends with `<n> ok, <m> failed`; without Chimera it is 53
+checks, and SKIP lines for the checks that need Chimera or the owner's
+files. The other machines' checks are in `waterbox/tests/systems.sh`, which
+it sources. With
 
 ```
 CHIMERA_ROOT=<chimera> MESEN_PACKAGE=<the package> ./waterbox/run-gate.sh
 ```
 
-six more run: Chimera's own checks of the texts, and five through
-`<chimera>/build/dll/chimera-run`: 47 checks (57 with `MESEN_CONTENT_DIR`, below).
+more run: Chimera's own checks of the texts, and the ones through
+`<chimera>/build/dll/chimera-run`: 62 checks. With all of the owner's files
+(below) and `MESEN_PUBLISHED_PACKAGE`, 90.
 
-### The owner's games and BIOS files (optional, local only)
+`MESEN_PUBLISHED_PACKAGE=<mesen.chimeraCore as published>` (the NES-only
+package, before the other machines) adds `nes:published` (its core.wbx and
+this one run Nova's schedule to the same machine) and `engine:nes-published`
+(a project and movie made with it play the same in this package).
+
+### The other machines' games and BIOS files (optional, local only)
+
+`MESEN_SYSTEMS_CONTENT=<folder>` names a folder laid out as the owner keeps
+them: `systems/<system>/<game>` and `firmware/<file>`, under their own
+names. The checks that use them (`waterbox/tests/systems.sh`, and the
+window's in `run-frontend.sh`) say SKIP when a file is absent:
+
+| File | Checks |
+| --- | --- |
+| `firmware/SNES_dsp1.rom` ... `SNES_st018.rom` (8 files) | `snes:chip-<chip>` |
+| `systems/snes/`: Super Mario World, TheLastSuper, Top Gear 2, Sailor Moon S, Prince of Persia (J) | `snes:game:*`, `snes:game-frontend` |
+| `systems/gb/Kirby's Hoshinoka-Bi (J) (V1.1).gb` with `firmware/SNES_SGB2_(J).sfc` and `SNES_SGB_RevB_(World).sfc` | `sgb:game:*`, `engine:sgb`, `sgb:frontend` |
+
+### The owner's NES games and BIOS files (optional, local only)
 
 Commercial games and BIOS files are never in this repository. Put them in a
 folder under their own names and name it with `MESEN_CONTENT_DIR`:
@@ -180,8 +204,10 @@ python3 <chimera>/tools/check-core-texts.py .
 
 It runs Chimera's window headless (no display) on projects it makes with
 `chimera-run --new-project`, and compares the console's RAM with the native
-reference's: 5 checks, three more with `MESEN_CONTENT_DIR` (the real rhythm
-ROM, Sonic, the Disk System) and one with `MESEN_FAMISTUDIO_ROMS`. Its files stay in `waterbox/tests/work/` (ignored by
+reference's: 8 checks (the NES's 5 and the Super NES's 3), three more with
+`MESEN_CONTENT_DIR` (the real rhythm ROM, Sonic, the Disk System), two more
+with `MESEN_SYSTEMS_CONTENT` (a Super NES game, the Super Game Boy) and one
+with `MESEN_FAMISTUDIO_ROMS`. Its files stay in `waterbox/tests/work/` (ignored by
 git). `--qt-lib` is for a window built against a Qt the system does not
 know of, such as `~/qt/6.12.0/gcc_64/lib` after `tools/ci-chimera.sh`.
 
@@ -197,7 +223,13 @@ package; then Chimera's `publish-core.yml` publishes it.
 
 | What | Where | When |
 | --- | --- | --- |
-| The game (.nes, .unf) | the Cartridge slot | always |
+| The game (.nes, .unf) | the Cartridge slot | always (the NES) |
+| The game (.sfc, .smc, .bs, .st; .gb, .gbc for the Super Game Boy) | the Game slot | always (the other machines) |
+| A chip's program (dsp1.rom, dsp1b.rom, dsp2.rom, dsp3.rom, dsp4.rom, st010.rom, st011.rom, st018.rom) | firmware, asked for by the game | a Super NES game with that chip |
+| The Super Game Boy's program (SGB1.sfc, 256 KiB) or the Super Game Boy 2's (SGB2.sfc, 512 KiB) | firmware | the Super Game Boy |
+| Nintendo's Super Game Boy boot ROM (sgb_boot.bin, sgb2_boot.bin) | firmware | Boot ROM = Nintendo's |
+| The Satellaview's BIOS (BS-X.bin) | firmware | a .bs file |
+| The Sufami Turbo's BIOS (SufamiTurbo.sfc) | firmware | a .st file |
 | A saved game (.sav) | the Saved game slot | to continue one |
 | A Famicom Disk System disk (.fds) | the Cartridge slot | always |
 | The rhythm ROM (`ym2608_adpcm_rom.bin`, 8 KiB, SHA-1 50b6c3e2...) | firmware `ymf288_adpcm_rom.bin` | an EPSM game with EPSM Drums on |

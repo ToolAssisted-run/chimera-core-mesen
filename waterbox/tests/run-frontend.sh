@@ -304,6 +304,101 @@ else
 	report "famistudio:frontend" FAIL "$fsfail"
 fi
 
+# --- the other machines (the Super NES and the rest): a project of the
+# machine's test program opened in the window, buttons of two players held
+# through it, ends on the native reference's RAM (run with the settings the
+# project recorded), which is not the idle run's; and the controller's
+# default keys are the machine's. The owner's games (MESEN_SYSTEMS_CONTENT,
+# never in this repository) the same, with nothing held; SKIP without them. ---
+sys_py="$here/systems.py"
+scontent="${MESEN_SYSTEMS_CONTENT:-}"
+system_window_leg() { # check tag file settings system-id domain hold-names [src=id firmware]...
+	local check="$1" tag="$2" file="$3" settings="$4" sysid="$5" domain="$6" holdnames="$7"
+	shift 7
+	local machine dir p wd fwargs=() fwmap="{}" f src
+	machine="$(python3 -I -c 'import json, sys; print(json.loads(sys.argv[1])["machine"])' "$settings")"
+	for f in "$@"; do
+		src="${f%%=*}"
+		[ -f "$src" ] || src="$scontent/firmware/$src"
+		if [ ! -f "$src" ]; then
+			report "$check" SKIP "needs $(basename "$src") in MESEN_SYSTEMS_CONTENT"; return
+		fi
+		fwargs+=(--firmware "${f##*=}=$src")
+		fwmap="$(python3 -I -c 'import json, sys; d = json.loads(sys.argv[1]); d[sys.argv[2]] = sys.argv[3]; print(json.dumps(d))' "$fwmap" "${f##*=}" "$src")"
+	done
+	python3 -I "$here/settings-config.py" "$work/window.$tag.json" '{}' "$fwmap"
+	dir="$work/project.$tag"
+	rm -rf "$dir" && mkdir -p "$dir" && cp "$file" "$dir/"
+	"$crun" --new-project "$dir/$tag.chimeraProject" "$package" "$dir/$(basename "$file")" \
+		--settings "$settings" "${fwargs[@]}" > "$dir/make.log" 2>&1
+	p="$dir/$tag.chimeraProject"
+	[ -f "$p" ] || { report "$check" FAIL "no project made (see tests/work/project.$tag/make.log)"; return; }
+	wd="$work/native.$tag"
+	rm -rf "$wd" && mkdir -p "$wd" && cp "$file" "$wd/"
+	python3 -I -c 'import json, sys; print(json.dumps({"cart": [sys.argv[1]]}))' "$(basename "$file")" > "$wd/slots"
+	python3 -I -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["settings"]))' "$p" > "$wd/settings"
+	for f in "$@"; do src="${f%%=*}"; [ -f "$src" ] || src="$scontent/firmware/$src"; cp "$src" "$wd/${f##*=}"; done
+	local specs=() name
+	IFS=, read -r -a names <<< "$holdnames"
+	for name in "${names[@]}"; do [ -n "$name" ] && specs+=("0:$frames:$name"); done
+	python3 -I "$sys_py" hold "$machine" "$frames" "$work/$tag.inputs" "${specs[@]}"
+	local wire
+	wire="$(python3 -I "$sys_py" wire "$machine")"
+	"$rn" "$wd" --frames "$frames" --wire "$wire" --inputs "$work/$tag.inputs" --dump-domain "$domain" "$work/native.$tag.ram.bin" > "$work/native.$tag.txt" 2>&1
+	"$rn" "$wd" --frames "$frames" --wire "$wire" --dump-domain "$domain" "$work/native.$tag.idle.bin" > /dev/null 2>&1
+	local job="$work/job.$tag.txt"
+	printf 'frames=%s\nout=%s\nmeta=%s\nshot=\nhold=%s\nsystem=%s\ndomain=%s\n' "$frames" "$work/$tag.ram.bin" "$work/$tag.meta.txt" "$holdnames" "$sysid" "$domain" > "$job"
+	( cd "$work" && MINIHAWK_JOB="$job" timeout -s KILL 900 "$chimera_exe" --headless \
+		"--config=$work/window.$tag.json" "--core=$package" "--lua=$here/frontend-ram.lua" "--project=$p" ) > "$work/$tag.log" 2>&1
+	if ! { [ -f "$work/$tag.meta.txt" ] && grep -q "^status=OK" "$work/$tag.meta.txt"; }; then
+		report "$check" FAIL "the window did not report OK: $(grep -m1 detail= "$work/$tag.meta.txt" 2>/dev/null) (see tests/work/$tag.log)"
+	elif ! cmp -s "$work/native.$tag.ram.bin" "$work/$tag.ram.bin"; then
+		report "$check" FAIL "$domain differs from the native reference"
+	elif [ -n "$holdnames" ] && cmp -s "$work/$tag.ram.bin" "$work/native.$tag.idle.bin"; then
+		report "$check" FAIL "holding $holdnames changed nothing"
+	elif [ -n "$holdnames" ] && [ "$file" != "${file#$root/tests/roms/}" ] && \
+		! python3 -I "$sys_py" check "$machine" "$(case "$settings" in *multitap*) echo 5 ;; *) echo 2 ;; esac)" "$work/$tag.inputs" "$work/$tag.ram.bin" > "$work/$tag.check.txt" 2>&1; then
+		report "$check" FAIL "the test program read: $(cat "$work/$tag.check.txt")"
+	else
+		report "$check" PASS "$sysid, $frames frames in the window${holdnames:+ with $holdnames held}: $domain == native${holdnames:+, != idle}"
+	fi
+}
+system_keys_leg() { # check tag file settings controller-name
+	local check="$1" tag="$2" file="$3" settings="$4" controller="$5" dir p
+	dir="$work/project.$tag"
+	rm -rf "$dir" && mkdir -p "$dir" && cp "$file" "$dir/"
+	"$crun" --new-project "$dir/$tag.chimeraProject" "$package" "$dir/$(basename "$file")" --settings "$settings" > "$dir/make.log" 2>&1
+	p="$dir/$tag.chimeraProject"
+	local job="$work/job.$tag.txt"
+	printf 'out=%s\nmeta=%s\n' "$work/$tag.controls.json" "$work/$tag.meta.txt" > "$job"
+	( cd "$work" && MINIHAWK_JOB="$job" timeout -s KILL 900 "$chimera_exe" --headless \
+		"--config=$work/window.json" "--core=$package" "--lua=$here/dump-controls.lua" "--project=$p" ) > "$work/$tag.log" 2>&1
+	if [ -f "$work/$tag.meta.txt" ] && grep -q "^status=OK" "$work/$tag.meta.txt"; then
+		if python3 -I "$here/check-keybinds.py" "$work/$tag.controls.json" "$wb/default_keybinds.json" "$controller" > "$work/$tag.txt" 2>&1; then
+			report "$check" PASS "$(cat "$work/$tag.txt")"
+		else
+			report "$check" FAIL "$(head -1 "$work/$tag.txt")"
+		fi
+	else
+		report "$check" FAIL "the window did not report OK (see tests/work/$tag.log)"
+	fi
+}
+sgames="$scontent/systems"
+
+system_window_leg snes:frontend snes "$root/tests/roms/snes-test.sfc" '{"machine":"snes"}' SNES WRAM "P1 Right,P1 Start,P2 A"
+system_window_leg snes-multitap:frontend snesmt "$root/tests/roms/snes-test.sfc" '{"machine":"snes","snesPort2":"multitap"}' SNES WRAM "P3 B,P5 L"
+system_keys_leg snes:keybinds sneskeys "$root/tests/roms/snes-test.sfc" '{"machine":"snes"}' "SNES Controller"
+if [ -f "$sgames/snes/Super Mario World (U) [!].smc" ]; then
+	system_window_leg snes:game-frontend smw "$sgames/snes/Super Mario World (U) [!].smc" '{"machine":"snes"}' SNES WRAM ""
+else
+	report "snes:game-frontend" SKIP "needs Super Mario World in MESEN_SYSTEMS_CONTENT"
+fi
+if [ -f "$sgames/gb/Kirby's Hoshinoka-Bi (J) (V1.1).gb" ]; then
+	system_window_leg sgb:frontend sgb "$sgames/gb/Kirby's Hoshinoka-Bi (J) (V1.1).gb" '{"machine":"sgb"}' SGB "GB WRAM" "" "SNES_SGB2_(J).sfc=SGB2.sfc"
+else
+	report "sgb:frontend" SKIP "needs Kirby's Hoshinoka-Bi in MESEN_SYSTEMS_CONTENT"
+fi
+
 # --- the bindings the package ships are the machine's when nobody changed them ---
 p="$(make_project keys nova.nes '{}')"
 job="$work/job.keys.txt"

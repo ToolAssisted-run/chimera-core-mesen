@@ -2,7 +2,8 @@
 
 This is the design log of the Mesen core: what was decided, why, and what
 was measured. Entries are dated. The last section, "Where this stands", is
-kept current for whoever continues the work.
+kept current for whoever continues the work; the "Where it stood" sections
+before it are what an earlier round left.
 
 The request is chimera issue #410: Mesen 2 or its community edition MesenCE,
 for the NES with the EPSM sound expansion.
@@ -831,7 +832,7 @@ colours). The window test on the broken package: `sonic:frontend` failed;
 on the new texts first: "BIOS" bent in Polish, Romanian and Norwegian
 (seven texts) once BIOS and Disk System were added to its names.
 
-## Where this stands (2026-10-31, fifth round)
+## Where it stood after the fifth round (2026-10-31)
 
 Works, and is tested here on Linux against Chimera main cb46d2b7
 (`~/chimera-scratch-bump`):
@@ -964,3 +965,273 @@ with EPSM Drums on and the real rhythm ROM given as firmware run 600 frames
 projects run by chimera-run on Linux (byte for byte). Sound was not compared
 on Windows.
 
+## Every system Mesen emulates (user-decided, 2026-10-31)
+
+The owner, on 2026-10-31: "I want all its systems to be offered in the
+chimera core." This replaces the earlier decision of the first round
+("the NES only until the EPSM is proved on a real game; then the SNES and
+the GBA"): every system MesenCE emulates is offered by this package.
+
+What MesenCE emulates at the pinned commit (4b8a196e), from its source
+(`Core/Shared/SettingTypes.h`, `ConsoleType`, and each console's
+`GetSupportedExtensions`):
+
+- the **NES** (`Core/NES`): with the Famicom Disk System, the VS System,
+  the StudyBox, and NSF music files;
+- the **Super NES** (`Core/SNES`): with its cartridge chips - the DSP-1,
+  DSP-1B, DSP-2, DSP-3 and DSP-4, the ST010 and ST011 (NEC uPD7725 and
+  uPD96050 running a program of their own), the ST018 (an ARM, its own
+  program too), the Cx4, the SA-1, the Super FX, the S-DD1, the SPC7110
+  (and its clock), the OBC1, the MSU-1 - the **Super Game Boy** and Super
+  Game Boy 2 (a Game Boy game on the Super NES), the **Satellaview** (BS-X,
+  .bs files) and the **Sufami Turbo** (.st), and SPC music files;
+- the **Game Boy** and **Game Boy Color** (`Core/Gameboy`), and GBS music
+  files;
+- the **Game Boy Advance** (`Core/GBA`);
+- the **PC Engine / TurboGrafx-16**, the **SuperGrafx** and the **PC Engine
+  CD** (CD-ROM2, Super CD-ROM2, the Arcade Card, the Games Express card)
+  (`Core/PCE`), and HES music files;
+- the **Master System**, the **Game Gear**, the **SG-1000** and the
+  **ColecoVision** (`Core/SMS`, one console with four models);
+- the **WonderSwan** and **WonderSwan Color** (`Core/WS`, with the
+  SwanCrystal and the Pocket Challenge V2 as models).
+
+The music file players (NSF, SPC, GBS, HES) are not machines a movie is
+made on and are not offered.
+
+How the package offers them: one `machines` entry per system id, picked by
+a new setting `machine` (the ares and Mednafen cores' shape). The NES is
+the first machine and the setting's default, and it keeps the package's
+top-level controller, picture and settings, so a project made before the
+other machines existed is an NES project and plays as it did. The other
+machines are added one step at a time, each committed when its checks
+pass:
+
+| Step | Machines (system ids) | Free test content |
+| --- | --- | --- |
+| 1 | Super NES (SNES), Super Game Boy (SGB) | this repository's test program |
+| 2 | Game Boy (GB), Game Boy Color (GBC) | this repository's test program |
+| 3 | Game Boy Advance (GBA) | none (Mesen needs the BIOS) |
+| 4 | Master System (SMS), Game Gear (GG), SG-1000 (SG), ColecoVision (CV) | test programs (the ColecoVision needs its BIOS) |
+| 5 | PC Engine (PCE), SuperGrafx (SGX), PC Engine CD (PCECD) | test program (the CD needs its BIOS) |
+| 6 | WonderSwan (WS), WonderSwan Color (WSC) | test program |
+
+## 2026-10-31: the machines, and the Super NES (sixth round, step 1)
+
+### What stays the NES's
+
+- The machine setting `machine` (options `nes`, `snes`, `sgb` so far)
+  defaults to `nes`. The NES's settings (region, port1, port2, expansion,
+  ramPowerOnState, epsmDrums) carry `when: ["nes"]`; their names, options
+  and defaults are unchanged. The NES's controller stays the package's
+  top-level `input` (its machine entry declares none), and `systemId` stays
+  `NES`.
+- `waterbox/mesen.cpp` takes the NES's path exactly as before when the
+  machine is `nes`: the same configuration, the same wire, the same buses
+  and domains. Measured: the published package's core.wbx (built at
+  a874aa5, byte for byte the core.wbx of the package built then) and this
+  one run Nova's 3000-frame schedule to the same frames, picture, sound,
+  lag and every memory domain (`nes:published`); a project and movie made
+  by chimera-run with the published package play in this package to the
+  native reference's RAM (`engine:nes-published`). Every NES check passes
+  as before.
+
+### The adapter
+
+- `waterbox/mesen.cpp` reads `machine` first. For a machine other than the
+  NES it sets up Mesen's settings for that console as Mesen's UI does by
+  default, with three exceptions said where they are made: frame blending
+  is off (it mixes each picture with the one before, so a frame drawn
+  after undrawn frames would not be its own picture), and the Game Boy
+  Advance's and the WonderSwan's colour correction is off (their curve is
+  computed with pow(), whose last bit the sandbox's C library and the
+  host's do not always agree on: the WonderSwan Color's picture differed
+  between the two flavors with it on). The picture keeps Mesen's UI's
+  overscan (the lines a television hides): 7 lines at the top and 8 at the
+  bottom of the Super NES's picture are cut, so it is 256x224.
+- Each machine has its own wire: the console's buttons, then the same pad
+  once per player, in the order Chimera's other cores use for the same
+  console (snes9x's for the Super NES: Up Down Left Right Select Start Y B
+  X A L R, letters U D L R s S Y B X A l r; Power P and Reset r).
+- The game is the slot `cart` (the NES's stays `rom`). Mesen picks a
+  console by the file's extension, so a file whose extension is not the
+  machine's is given to Mesen from memory under the machine's (a
+  ColecoVision game named .bin as .col); Mesen reloads a game by its path
+  at a power cycle, so for those the core reloads it itself.
+- Firmware Mesen cannot run without is checked before the load and named
+  in the error (`error.no_snes_chip`, `error.no_sgb_bios`,
+  `error.no_bsx_bios`, `error.no_sufami_bios`, ...): without it Mesen loads
+  some games anyway and they wait forever for the chip.
+- Memory domains per console (the Super NES: WRAM, Cart RAM, VRAM, OAM,
+  CGRAM, APU RAM, and the chips' RAM when the cartridge has them; the
+  Super Game Boy adds the Game Boy's as "GB WRAM" and the rest) and buses
+  through the accessors Mesen's debugger uses (the Super NES's 16 MiB
+  "System Bus" by `SnesMemoryManager::Peek` and its memory mappings'
+  `DebugWrite`; the sound CPU's 64 KiB "APU Bus"; the Super Game Boy's
+  "GB Bus").
+- The frame rate as a fraction from each console's clocks
+  (236250000/3931026 for an NTSC Super NES, 21281370/425568 for a PAL one).
+- Save data: the cartridge's RAM, exported as battery.sav; the saved game
+  slot takes .sav and .srm (Mesen asks the Super NES's as .srm).
+
+### Two new patches
+
+- **0009 `MESEN_VIRTUAL_CLOCK`**: the Game Boy's MBC3 clock, the SPC7110's
+  RTC-4513 and the S-3511A (Game Boy Advance and WonderSwan cartridges)
+  read the host's time. With the option they read `MesenVirtualClockMs`,
+  which the core starts at the new setting **Clock Start** (`rtcStart`, a
+  date and time, 2000-01-01 by default) and moves forward with the
+  machine's frames. The Satellaview's date is the same setting (Mesen's
+  `BsxCustomDate`).
+- **0010 `MESEN_BARE_FOLDERLESS`**: Mesen names files beside the game by
+  the game's folder (the MSU-1's tracks, a .cue's .img); for a game given
+  by its bare name the folder is "", and `FolderUtilities::CombinePath`
+  read the character before its start - native, the first Super NES game
+  stopped on the C++ library's assertion. With the option the name stays
+  as it is.
+
+### The Super NES's chips: firmware for this game
+
+The DSP-1 to 4, ST010, ST011 and ST018 run a program that is not in the
+game's file. Which one a cartridge needs depends on the game, so the
+package declares `"gameFirmware": true` and `SuggestSettings` returns the
+chip's program as this game's firmware, read from the cartridge's header
+the way Mesen reads it (`waterbox/snes-coprocessor.inc`: Mesen's header
+score, ROM type and title). The SHA-1s are the owner's files'. The Cx4,
+SA-1, Super FX, S-DD1, SPC7110 and OBC1 need none (Mesen emulates them
+whole).
+
+### The package
+
+- Machines `SNES` ("Super NES / Super Famicom") and `SGB` ("Super Game
+  Boy"), each with its controller ("SNES Controller", five players: the
+  multitap in port 2 holds players 2 to 5), shown at 292x224.
+- Settings (each with `when`): Region (`snesRegion`), Controller Port 1
+  and 2 (`snesPort1`: controller or nothing; `snesPort2`: controller,
+  nothing or the multitap), Memory at Power On (a second declaration of
+  `ramPowerOnState`, random by default as Mesen's UI has it), Random Seed,
+  Super Game Boy Model (`sgbModel`: Super Game Boy 2 or Super Game Boy),
+  Boot ROM (`bootRom`: Mesen's own, from SameBoy, or Nintendo's as
+  firmware) and Clock Start.
+- Firmware: the Super Game Boy's and Super Game Boy 2's cartridge programs
+  (SGB1.sfc, SGB2.sfc) and their boot ROMs, pinned to the owner's files;
+  the Satellaview's BS-X BIOS and the Sufami Turbo's BIOS, required for a
+  .bs and a .st file, with no SHA-1 pinned (nobody here has them).
+- Default keys for the SNES Controller (player 1: the arrows, Z X A S Q W,
+  Space and Enter, and a gamepad), written here.
+- 56 new texts, in all 26 language tables; check-names.py knows the new
+  names (Super NES, Super Famicom, Super Game Boy, Game Boy, Satellaview,
+  BS-X, Sufami Turbo, DSP-1 to 4, ST010, ST011, ST018, SameBoy, and the
+  next steps' names).
+
+### The test program
+
+`tests/snes-test/make-snes-test.py` builds `tests/roms/snes-test.sfc`: our
+own 65816 program. Each frame it waits for the automatic read of the pads
+to start and to end (read while it runs, the registers are not the pads':
+a first version read 'Left' for a held Start), copies the read ($4218 to
+$421F) to RAM, reads port 2 by hand sixteen times with the I/O line low
+(a multitap's pads 4 and 5), shows pad 1 as the backdrop colour and writes
+it to its battery RAM. The same program with the headers of the chip
+games (DSP-1 to 4, ST010, ST011, ST018) is built at test time; on the
+DSP-1 and DSP-1B ones it asks the chip to multiply 0x4000 by 0x4000.
+
+### Checks (waterbox/tests/systems.sh, run by run-gate.sh)
+
+- On the test program, two pads and then five through the multitap:
+  `snes:equivalence`, `snes:input` (the RAM holds the last frame's buttons
+  of every pad, and the idle run is another machine), `snes:savestate`,
+  `snes:turbo`, `snes:session`, `snes:bus`; the same six for
+  `snes-multitap`.
+- `snes:chip-<chip>` for the eight chips (with the owner's files): the
+  cartridge is refused without the chip's program and runs with it, native
+  == sandbox; the DSP-1's and DSP-1B's programs multiply into 0x2000.
+- The owner's games (MESEN_SYSTEMS_CONTENT): Super Mario World, The Last
+  Super, Top Gear 2, Sailor Moon S, Prince of Persia (J), and Kirby's
+  Hoshinoka-Bi on the Super Game Boy 2 and the Super Game Boy: 1800 frames
+  of the pad exercise, native == sandbox == saved and loaded each frame,
+  another machine than the idle run, a state across processes, sound, a
+  picture of many colours.
+- Through chimera-run: `engine:snes` and `engine:snes-multitap` (the
+  schedule as a Chimera movie, made into a project by one chimera-run and
+  replayed by another, ends on the native reference's WRAM, and that WRAM
+  holds the schedule's last buttons), `engine:snes-polls` (the reads of
+  the controls reach Chimera's input-poll callback), `engine:sgb` (Kirby's
+  movie, with the Super Game Boy 2 program), `engine:nes-published`.
+- In the window (run-frontend.sh): `snes:frontend` (P1 Right, P1 Start and
+  P2 A held through the window), `snes-multitap:frontend` (P3 B and P5 L),
+  `snes:keybinds`, `snes:game-frontend` (Super Mario World), `sgb:frontend`
+  (Kirby with the Super Game Boy 2 program, nothing held).
+
+Seen to fail, with the adapter broken on purpose in five places at once
+and rebuilt (players 1 and 2 of the Super NES swapped, the multitap's
+players one off, the chip check skipped, the Super NES bus read with
+Mesen's ordinary `Read`, the Super NES's channel volumes 0): `snes:input`,
+`snes-multitap:input`, both `snes*:bus`, all eight `snes:chip-*`, four of
+the five Super NES games ("silent"), `engine:snes`, `engine:snes-multitap`,
+`snes:frontend` and `snes-multitap:frontend` failed. The engine and window
+checks at first PASSED with the swapped players (Chimera and the native
+reference were broken alike); they now also read the test program's RAM
+for the schedule's buttons, and failed then. Not broken on purpose:
+`engine:snes-polls` (the hook is the NES's, which was seen to fail in the
+third round) and the Super Game Boy checks.
+
+Chimera: chimera-run --new-project records every setting the package
+declares at its first declaration's default for the ones --settings leaves
+out, the NES's included (the window's New Project uses the machine's own
+defaults). So a Super NES project made by chimera-run says
+ramPowerOnState "zeros" where the window would say "random"; both run as
+recorded. The engine and window checks run the native reference with the
+settings the project recorded.
+
+## Where this stands (2026-10-31, sixth round)
+
+Works, and is tested here on Linux against Chimera main cb46d2b7
+(`~/chimera-scratch-bump`):
+
+- Everything the fifth round left (the NES, the EPSM, the Disk System, the
+  devices), unchanged: the NES machine is the published one (`nes:published`,
+  `engine:nes-published`).
+- New: the package is several machines, picked by the setting **Console**
+  (`machine`). Offered so far: the **Super NES** (pads, the multitap, the
+  chips' programs as each game's firmware, Clock Start for the SPC7110's
+  clock and the Satellaview's date) and the **Super Game Boy** (Super Game
+  Boy and Super Game Boy 2, Mesen's or Nintendo's boot ROM).
+- Commands and counts: `run-gate.sh` 53 ok with neither Chimera nor the
+  owner's files, 62 ok with Chimera, 90 ok with Chimera, MESEN_CONTENT_DIR,
+  MESEN_SYSTEMS_CONTENT and MESEN_PUBLISHED_PACKAGE; `run-frontend.sh` 8 ok
+  without the owner's files, 13 ok with them; `test-packages` PASS (0
+  failed); `check-core-texts.py` 107 keys; `check-names.py` 0 in 26 tables;
+  Chimera's `check-proper-nouns.py` 0.
+
+Not done, or not proved:
+
+- The other systems (steps 2 to 6 above): not offered yet.
+- The Satellaview (.bs) and the Sufami Turbo (.st): declared, never run (no
+  BIOS was given; the owner's two .bs games need the BS-X BIOS).
+- The Super NES chips DSP-2, DSP-3, DSP-4, ST010, ST011 and ST018: their
+  programs load and the cartridge runs, but no game with one was tried and
+  their programs were not exercised (the DSP-1's and DSP-1B's multiply was).
+  The Cx4, SA-1, Super FX, S-DD1, SPC7110 and OBC1 were not tried (no game
+  with one is among the owner's).
+- The Super NES test program makes no sound (it does not load a program
+  into the sound CPU); the sound is proved on the owner's games only, so CI
+  proves the Super NES's sound only as native == sandbox on silence.
+- Nintendo's boot ROMs (Boot ROM = Nintendo's) were not run.
+- The mouse, the Super Scope and the other Super NES devices Mesen has are
+  not offered.
+- No Windows run of the new machines.
+
+Traps, new this round:
+
+- chimera-run --new-project records the first declaration's default for a
+  setting --settings leaves out, even one whose `when` is another machine's
+  (the NES's ramPowerOnState "zeros" in a Super NES project); compare a
+  project with a native run of the settings it recorded.
+- The Super NES's automatic pad read runs for three lines after the
+  vertical blank starts; a program that reads $4218 too early reads a
+  shifting register.
+- A run longer than its input file: the harness runs `--frames` when it is
+  larger (the default is 600), so give `--frames` as the file's length.
+- The WonderSwan's and Game Boy Advance's colour correction (pow()) differs
+  in its last bit between the sandbox's C library and the host's: off.

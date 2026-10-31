@@ -8,8 +8,8 @@
 --   out=<path to write the RAM dump (binary)>
 --   meta=<path to write result metadata (text)>
 --   shot=<optional path to write a screenshot>
-
-local DOMAIN = "RAM"
+--   system=<the system id the project must have, NES when not given>
+--   domain=<the memory domain to dump, RAM when not given>
 
 local function writeAll(path, data)
 	local f = assert(io.open(path, "wb"))
@@ -43,8 +43,10 @@ for line in io.lines(jobPath) do
 	if k then job[k] = v end
 end
 meta.metaPath = job.meta
+local DOMAIN = (job.domain ~= nil and job.domain ~= "") and job.domain or "RAM"
+local SYSTEM = (job.system ~= nil and job.system ~= "") and job.system or "NES"
 
-if emu.getsystemid() ~= "NES" then
+if emu.getsystemid() ~= SYSTEM then
 	finish("ERROR", "wrong system id: " .. tostring(emu.getsystemid()))
 end
 if emu.getcorename() ~= "Mesen" then

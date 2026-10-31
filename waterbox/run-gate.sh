@@ -828,6 +828,11 @@ for g in "rcproam2:R.C. Pro-Am II (U) [!].nes" "indyheat:Danny Sullivan's Indy H
 	fi
 done
 
+# ---------------------------------------------------------------- the other machines
+# The Super NES and the rest: waterbox/tests/systems.sh.
+. "$here/tests/systems.sh"
+systems_core
+
 # ---------------------------------------------------------------- the build
 # No network code in the guest (patches/0006, user-decided 2026-10-31).
 if nn="$("$here/tests/check-no-network.sh" "$gst/core.wbx" 2>&1)"; then
@@ -1093,8 +1098,9 @@ PYFS
 	else
 		report "engine:famistudio" SKIP "needs MESEN_FAMISTUDIO_ROMS (FamiStudio's exported songs, not in this repository)"
 	fi
+	systems_engine
 else
-	report "engine:*" SKIP "8 checks: need CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
+	report "engine:*" SKIP "10 checks: need CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
 fi
 
 echo ""

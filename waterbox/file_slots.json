@@ -12,7 +12,35 @@
         "unif",
         "fds"
       ],
-      "help": "slot.rom.help"
+      "help": "slot.rom.help",
+      "exposedWhen": {
+        "setting": "machine",
+        "is": "nes"
+      }
+    },
+    {
+      "id": "cart",
+      "title": "slot.cart",
+      "min": 1,
+      "max": 1,
+      "formats": [
+        "sfc",
+        "smc",
+        "swc",
+        "fig",
+        "bs",
+        "st",
+        "gb",
+        "gbc"
+      ],
+      "help": "slot.cart.help",
+      "exposedWhen": {
+        "setting": "machine",
+        "in": [
+          "snes",
+          "sgb"
+        ]
+      }
     },
     {
       "id": "savedata",
@@ -20,7 +48,8 @@
       "min": 0,
       "max": 1,
       "formats": [
-        "sav"
+        "sav",
+        "srm"
       ],
       "help": "slot.savedata.help"
     }

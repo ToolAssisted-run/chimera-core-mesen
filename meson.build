@@ -29,7 +29,8 @@ endif
 # bare names in the folder "." (0004), saved games kept by the host (0005),
 # no network code (0006; waterbox/list-sources.py leaves its sources out),
 # the Arkanoid controller's knob where the host says it is (0007), the EPSM
-# plugged in by the host for a cartridge whose header does not ask (0008).
+# plugged in by the host for a cartridge whose header does not ask (0008),
+# the cartridges' clocks on the machine's own time (0009).
 defs = [
   '-DNDEBUG',
   '-DMESEN_SINGLE_THREAD',
@@ -40,6 +41,8 @@ defs = [
   '-DMESEN_NO_NETWORK',
   '-DMESEN_ABSOLUTE_PADDLE',
   '-DMESEN_EXPANSION_EPSM',
+  '-DMESEN_VIRTUAL_CLOCK',
+  '-DMESEN_BARE_FOLDERLESS',
 ]
 add_project_arguments(defs + ['-fno-strict-aliasing', '-Wno-narrowing'], language: ['c', 'cpp'])
 

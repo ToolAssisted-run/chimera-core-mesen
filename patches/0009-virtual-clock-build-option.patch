@@ -1,0 +1,139 @@
+Build option MESEN_VIRTUAL_CLOCK: the cartridges' real-time clocks read a
+time of day the host gives, not the host's own clock.
+
+Three clocks in Mesen read the host's time: the Game Boy's MBC3 clock (when
+a saved game with its clock is loaded, to run it forward by the time the
+game was off), the SPC7110's RTC-4513 (Super Famicom) and the S-3511A of
+the Game Boy Advance and WonderSwan cartridges (each time the game reads
+it). A machine that reads the host's clock is another machine in every
+run. With this option they read MesenVirtualClockMs, milliseconds since
+1970-01-01 UTC, which the host sets from a setting and moves forward with
+the machine's own time. Off, nothing changes.
+
+diff --git a/Core/Gameboy/Carts/GbMbc3Rtc.h b/Core/Gameboy/Carts/GbMbc3Rtc.h
+index 71009335..83bbd092 100644
+--- a/Core/Gameboy/Carts/GbMbc3Rtc.h
++++ b/Core/Gameboy/Carts/GbMbc3Rtc.h
+@@ -6,6 +6,15 @@
+ #include "Utilities/ISerializable.h"
+ #include "Utilities/Serializer.h"
+ 
++#ifdef MESEN_VIRTUAL_CLOCK
++//The time of day the host gives the machine, in milliseconds since
++//1970-01-01 UTC: it moves with the machine's own time, not the host's.
++extern int64_t MesenVirtualClockMs;
++#define MESEN_CLOCK_MS() (MesenVirtualClockMs)
++#else
++#define MESEN_CLOCK_MS() (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count())
++#endif
++
+ class GbMbc3Rtc : public ISerializable
+ {
+ private:
+@@ -47,7 +56,7 @@ public:
+ 				time |= rtcData[sizeof(_regs) + i];
+ 			}
+ 
+-			int64_t elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - time;
++			int64_t elapsedMs = MESEN_CLOCK_MS() - time;
+ 			if(elapsedMs > 0) {
+ 				//Run clock forward based on how much time has passed since the game was turned off
+ 				RunForDuration(elapsedMs / 1000);
+@@ -61,7 +70,7 @@ public:
+ 		rtcData.resize(sizeof(_regs) + sizeof(uint64_t), 0);
+ 
+ 		memcpy(rtcData.data(), _regs, sizeof(_regs));
+-		uint64_t time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
++		uint64_t time = MESEN_CLOCK_MS();
+ 		for(uint32_t i = 0; i < sizeof(uint64_t); i++) {
+ 			rtcData[sizeof(_regs) + i] = (time >> 56) & 0xFF;
+ 			time <<= 8;
+diff --git a/Core/SNES/Coprocessors/SPC7110/Rtc4513.cpp b/Core/SNES/Coprocessors/SPC7110/Rtc4513.cpp
+index e30d862b..b1bceae8 100644
+--- a/Core/SNES/Coprocessors/SPC7110/Rtc4513.cpp
++++ b/Core/SNES/Coprocessors/SPC7110/Rtc4513.cpp
+@@ -6,6 +6,15 @@
+ #include "Shared/BatteryManager.h"
+ #include "Utilities/HexUtilities.h"
+ #include "Utilities/Serializer.h"
++
++#ifdef MESEN_VIRTUAL_CLOCK
++//The time of day the host gives the machine, in milliseconds since
++//1970-01-01 UTC: it moves with the machine's own time, not the host's.
++extern int64_t MesenVirtualClockMs;
++#define MESEN_CLOCK_MS() (MesenVirtualClockMs)
++#else
++#define MESEN_CLOCK_MS() (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count())
++#endif
+ #include "Utilities/TimeUtilities.h"
+ 
+ //TODO: Partial implementation
+@@ -33,7 +42,7 @@ void Rtc4513::LoadBattery()
+ 		}
+ 		_lastTime = time;
+ 	} else {
+-		_lastTime = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
++		_lastTime = (MESEN_CLOCK_MS() / 1000);
+ 	}
+ }
+ 
+@@ -60,7 +69,7 @@ void Rtc4513::UpdateTime()
+ 		_regs[1] = 0;
+ 	}
+ 
+-	uint64_t currentTime = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
++	uint64_t currentTime = (MESEN_CLOCK_MS() / 1000);
+ 	uint32_t elapsedSeconds = (uint32_t)(currentTime - _lastTime);
+ 	if(elapsedSeconds <= 0) {
+ 		return;
+diff --git a/Core/Shared/Utilities/S3511ARtc.cpp b/Core/Shared/Utilities/S3511ARtc.cpp
+index dbdcf933..369a4020 100644
+--- a/Core/Shared/Utilities/S3511ARtc.cpp
++++ b/Core/Shared/Utilities/S3511ARtc.cpp
+@@ -3,6 +3,19 @@
+ #include "Shared/Emulator.h"
+ #include "Shared/BatteryManager.h"
+ #include "Utilities/Serializer.h"
++
++#ifdef MESEN_VIRTUAL_CLOCK
++//The time of day the host gives the machine, in milliseconds since
++//1970-01-01 UTC: it moves with the machine's own time, not the host's.
++extern int64_t MesenVirtualClockMs;
++#define MESEN_CLOCK_MS() (MesenVirtualClockMs)
++#else
++#define MESEN_CLOCK_MS() (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count())
++#endif
++
++#ifdef MESEN_VIRTUAL_CLOCK
++int64_t MesenVirtualClockMs = 946684800000LL;
++#endif
+ #include "Utilities/TimeUtilities.h"
+ 
+ S3511ARtc::S3511ARtc(Emulator* emu)
+@@ -14,7 +27,7 @@ S3511ARtc::S3511ARtc(Emulator* emu)
+ 	_state.Status = 0x02;
+ 	_state.IntHour = 0x80;
+ 
+-	_lastUpdateTime = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
++	_lastUpdateTime = (MESEN_CLOCK_MS() / 1000);
+ }
+ 
+ uint8_t S3511ARtc::SanitizeData(uint8_t value, uint8_t maxValue, uint8_t fixedValue)
+@@ -206,7 +219,7 @@ void S3511ARtc::Reset()
+ 
+ void S3511ARtc::UpdateTime()
+ {
+-	uint64_t currentTime = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
++	uint64_t currentTime = (MESEN_CLOCK_MS() / 1000);
+ 	uint32_t elapsedSeconds = (uint32_t)(currentTime - _lastUpdateTime);
+ 	if(elapsedSeconds <= 0) {
+ 		return;
+@@ -304,7 +317,7 @@ void S3511ARtc::LoadBattery()
+ 		}
+ 		_lastUpdateTime = time;
+ 	} else {
+-		_lastUpdateTime = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
++		_lastUpdateTime = (MESEN_CLOCK_MS() / 1000);
+ 	}
+ }
+ 

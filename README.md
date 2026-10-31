@@ -11,9 +11,16 @@ pad, the Four Score (four players), the Zapper or the Arkanoid controller;
 the Famicom's expansion port holds its own Zapper, its Arkanoid controller
 or the four-player adapter.
 
-Mesen's other systems (SNES, Game Boy, GBA, PC Engine, Master System,
-WonderSwan) are compiled in but not offered yet; `docs/PLAN.md` says what
-each would take.
+Every other system Mesen emulates is being added to the same package, one
+at a time (the owner's decision, `docs/PLAN.md`): a project's **Console**
+setting picks it. Offered so far: the **Super NES / Super Famicom** (two
+controllers, or a multitap for five players; the cartridge chips whose
+program the game's file lacks - DSP-1 to 4, ST010, ST011, ST018 - are asked
+for as the game's firmware) and the **Super Game Boy** (a Game Boy game on
+the Super NES, with the Super Game Boy's or Super Game Boy 2's program as
+firmware). The Satellaview (.bs) and the Sufami Turbo (.st) are declared but
+not tried: no BIOS for them was at hand. An NES project made before keeps
+playing as it did.
 
 ## Using it in Chimera
 

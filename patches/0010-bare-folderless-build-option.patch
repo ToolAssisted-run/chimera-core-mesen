@@ -1,0 +1,28 @@
+Build option MESEN_BARE_FOLDERLESS: a file named with no folder keeps its
+name when Mesen puts a folder in front of it.
+
+Mesen names files beside the game by the game's folder: the MSU-1's audio
+tracks of a Super NES game, the .img files of a PC Engine CD's .cue. Given a
+game by its bare name ("game.sfc", as a sandbox mounts it), the folder is
+"", and FolderUtilities::CombinePath read the character before its start
+(folder[folder.length() - 1]): a debug build stops on an assertion, a
+release build reads outside the string. With this option an empty folder
+leaves the file's name as it is. Off, nothing changes.
+
+--- a/Utilities/FolderUtilities.cpp
++++ b/Utilities/FolderUtilities.cpp
+@@ -234,6 +234,14 @@
+ 		return filename;
+ 	}
+ #endif
++#ifdef MESEN_BARE_FOLDERLESS
++	//A file named with no folder (the folder of "game.sfc" is "") is in
++	//the same folder: it keeps its name. Without this, an empty folder
++	//was read one character before its start.
++	if(folder.empty()) {
++		return filename;
++	}
++#endif
+ 	//Windows supports forward slashes for paths, too.  And fs::u8path is abnormally slow.
+ 	if(folder[folder.length() - 1] != '/') {
+ 		return folder + "/" + filename;

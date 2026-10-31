@@ -25,6 +25,14 @@
  * <, > and e are the Disk System's Previous Disk, Next Disk and Eject Disk. An
  * axis a line does not name rests at its neutral value (32768 for a
  * Zapper's, 80 for a knob).
+ *
+ * The package's other machines (the Super NES, the Game Boy and the rest)
+ * have wires of their own: the console's buttons, then each player's pad.
+ * With --wire <console>,<pad> (how many buttons each has) the input file's
+ * lines are |<console>|<player 1>|<player 2>|...|, one character a button in
+ * the wire's order, '.' for one not held and any other for one held; and
+ * --pad <8 wire indices> says where the pad exercise's A, B, Select, Start,
+ * Up, Down, Left and Right are on that wire (-1: not on this pad).
  */
 #ifndef GATE_HARNESS_H
 #define GATE_HARNESS_H
@@ -35,7 +43,9 @@
 #include <string.h>
 #include <time.h>
 
+/* the NES's wire; another machine's is up to GATE_BTN_MAX */
 #define GATE_BTN_COUNT (2 + 4 * 8 + 2 + 2 + 3)
+#define GATE_BTN_MAX 64
 #define GATE_AXIS_COUNT 6
 static const int32_t gate_axis_neutral[GATE_AXIS_COUNT] = { 32768, 32768, 80, 32768, 32768, 80 };
 
@@ -106,17 +116,24 @@ static uint64_t gate_fnv(uint64_t h, const void *p, size_t n)
 /* deterministic P1 pad pattern, identical in both drivers, so the input path
  * is part of the comparison; Power and Reset stay untouched. The pad changes
  * every 4 frames, and Start is held only now and then. */
+static int gate_pad_map[8] = { 2, 3, 4, 5, 6, 7, 8, 9 };
 static void gate_exercise_pad(long frame, uint8_t *buttons)
 {
 	uint64_t x = (uint64_t)(frame / 4) * 6364136223846793005ULL + 1442695040888963407ULL;
 	x ^= x >> 33;
+	uint8_t b[8];
 	for (int k = 0; k < 8; k++)
-		buttons[2 + k] = (x >> k) & 1;
-	buttons[2 + 3] = ((x >> 13) & 7) == 0; /* Start */
-	buttons[2 + 2] = 0;                    /* Select */
+		b[k] = (x >> k) & 1;
+	b[3] = ((x >> 13) & 7) == 0; /* Start */
+	b[2] = 0;                    /* Select */
 	/* no pad holds Up+Down or Left+Right */
-	if (buttons[2 + 4] && buttons[2 + 5]) buttons[2 + 5] = 0;
-	if (buttons[2 + 6] && buttons[2 + 7]) buttons[2 + 7] = 0;
+	if (b[4] && b[5]) b[5] = 0;
+	if (b[6] && b[7]) b[7] = 0;
+	/* on the NES's wire, columns 2 to 9; another machine's say where
+	 * (--pad); a column at -1 is a button the pad does not have */
+	for (int k = 0; k < 8; k++)
+		if (gate_pad_map[k] >= 0)
+			buttons[gate_pad_map[k]] = b[k];
 }
 
 struct gate_inputs
@@ -190,8 +207,44 @@ static int gate_parse_extra(const char *s, uint8_t *buttons, int32_t *axes)
 	return *s == '|' && s[1] == 0;
 }
 
+/* another machine's line: |<console>|<player 1>|<player 2>|...| with one
+ * character a button in the wire's order, '.' for not held and anything
+ * else for held. The console's field has the machine's console buttons,
+ * each player's its pad's columns: --wire <console>,<pad> says how many. */
+static int gate_wire_console = 0, gate_wire_pad = 0;
+static int gate_parse_generic(const char *line, uint8_t *buttons)
+{
+	memset(buttons, 0, GATE_BTN_MAX);
+	const char *s = line;
+	int at = 0, field = 0;
+	if (*s++ != '|') return 0;
+	while (*s)
+	{
+		int width = field == 0 ? gate_wire_console : gate_wire_pad;
+		int n = 0;
+		while (*s && *s != '|')
+		{
+			if (n >= width || at + n >= GATE_BTN_MAX) return 0;
+			buttons[at + n] = *s != '.';
+			n++;
+			s++;
+		}
+		if (*s != '|' || n != width) return 0;
+		s++;
+		at += width;
+		field++;
+	}
+	return field > 0;
+}
+
 static int gate_parse_line(const char *line, uint8_t *buttons, int32_t *axes)
 {
+	if (gate_wire_pad > 0)
+	{
+		for (int i = 0; i < GATE_AXIS_COUNT; i++)
+			axes[i] = gate_axis_neutral[i];
+		return gate_parse_generic(line, buttons);
+	}
 	memset(buttons, 0, GATE_BTN_COUNT);
 	for (int i = 0; i < GATE_AXIS_COUNT; i++)
 		axes[i] = gate_axis_neutral[i];
@@ -261,8 +314,9 @@ static int gate_run(const struct gate_core *c, const struct gate_opts *o)
 	const long tail = frames / 2;
 	long lag = 0;
 
-	uint8_t buttons[GATE_BTN_COUNT];
-	uint8_t prev[GATE_BTN_COUNT];
+	uint8_t buttons[GATE_BTN_MAX];
+	uint8_t prev[GATE_BTN_MAX];
+	const int nbuttons = gate_wire_pad > 0 ? GATE_BTN_MAX : GATE_BTN_COUNT;
 	int32_t axes[GATE_AXIS_COUNT];
 	memset(prev, 0, sizeof prev);
 	if (o->loadPath)
@@ -321,7 +375,7 @@ static int gate_run(const struct gate_core *c, const struct gate_opts *o)
 		if (c->pre_frame)
 			c->pre_frame();
 
-		for (int i = 0; i < GATE_BTN_COUNT; i++)
+		for (int i = 0; i < nbuttons; i++)
 		{
 			if (buttons[i] != prev[i])
 				c->set_button(i, buttons[i]);
@@ -458,6 +512,15 @@ static int gate_parse_opts(int argc, char **argv, int first, struct gate_opts *o
 		else if (!strcmp(argv[i], "--look")) o->look = 1;
 		else if (!strcmp(argv[i], "--look-ppu")) o->lookPpu = 1;
 		else if (!strcmp(argv[i], "--dump-bus") && i + 2 < argc) { o->dumpBus = (int)strtol(argv[++i], 0, 0); o->dumpBusPath = argv[++i]; }
+		else if (!strcmp(argv[i], "--wire") && i + 1 < argc)
+		{
+			if (sscanf(argv[++i], "%d,%d", &gate_wire_console, &gate_wire_pad) != 2 || gate_wire_pad <= 0) return 0;
+		}
+		else if (!strcmp(argv[i], "--pad") && i + 1 < argc)
+		{
+			if (sscanf(argv[++i], "%d,%d,%d,%d,%d,%d,%d,%d", &gate_pad_map[0], &gate_pad_map[1], &gate_pad_map[2],
+				&gate_pad_map[3], &gate_pad_map[4], &gate_pad_map[5], &gate_pad_map[6], &gate_pad_map[7]) != 8) return 0;
+		}
 		else if (!strcmp(argv[i], "--rerecord")) ; /* run-wbx's; ignored here */
 		else { fprintf(stderr, "unknown argument %s\n", argv[i]); return 0; }
 	}
