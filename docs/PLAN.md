@@ -493,6 +493,21 @@ clearing the vertical blank flag there changes nothing in its run. The
 check proves that the reads Chimera makes leave this game's machine alone,
 not that every side effect would show.
 
+## 2026-10-31: the owner's decisions on the devices (user-decided, 2026-10-31)
+
+The owner accepted the second round's recommendations:
+
+- **Where the Zapper and the Arkanoid controller plug in**: the NES's
+  second controller port only, as built. The Famicom's expansion port and
+  its devices (the Famicom Zapper, the Famicom Arkanoid controller, the
+  four-player adapter) come next, as work that needs no game files.
+- **The ranges of their axes**: the Zapper's place stays 0 to 65535 across
+  the picture's width and height, and the Arkanoid knob 0 to 160 (the
+  quickerNES core's range), as built.
+
+Nothing changed in the core for these two: they keep what the second round
+built.
+
 ## Where this stands (2026-10-31, second round)
 
 Works, and is tested here on Linux against Chimera main cb46d2b7
