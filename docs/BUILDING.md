@@ -2,11 +2,11 @@
 
 This repository builds MesenCE as a sandboxed guest (`core.wbx`) and
 packages it as one file, `mesen.chimeraCore`, which Chimera loads as the
-NES and as each other system Mesen emulates that the package offers so far
-(the Super NES, the Super Game Boy, the Game Boy, the Game Boy Color, the
-Game Boy Advance, the Master System, the Game Gear, the SG-1000 and the
-ColecoVision), picked by a project's setting
-`machine`.
+NES and as each other system Mesen emulates (the Super NES, the Super Game
+Boy, the Game Boy, Game Boy Color and Game Boy Advance, the PC Engine,
+SuperGrafx and PC Engine CD, the Master System, Game Gear, SG-1000 and
+ColecoVision, the WonderSwan and WonderSwan Color), picked by a project's
+setting `machine`.
 
 Two placeholders are used throughout:
 
@@ -115,7 +115,7 @@ differ.
 
 It needs `run-native`, `run-wbx` and `core.wbx` built, and builds nothing
 (it builds the Super NES chip test cartridges it needs into its work
-folder). It ends with `<n> ok, <m> failed`; without Chimera it is 92
+folder). It ends with `<n> ok, <m> failed`; without Chimera it is 129
 checks, and SKIP lines for the checks that need Chimera or the owner's
 files. The other machines' checks are in `waterbox/tests/systems.sh`, which
 it sources. With
@@ -125,8 +125,8 @@ CHIMERA_ROOT=<chimera> MESEN_PACKAGE=<the package> ./waterbox/run-gate.sh
 ```
 
 more run: Chimera's own checks of the texts, and the ones through
-`<chimera>/build/dll/chimera-run`: 108 checks. With all of the owner's
-files (below) and `MESEN_PUBLISHED_PACKAGE`, 173.
+`<chimera>/build/dll/chimera-run`: 151 checks. With all of the owner's
+files (below) and `MESEN_PUBLISHED_PACKAGE`, 226.
 
 `MESEN_PUBLISHED_PACKAGE=<mesen.chimeraCore as published>` (the NES-only
 package, before the other machines) adds `nes:published` (its core.wbx and
@@ -150,6 +150,9 @@ window's in `run-frontend.sh`) say SKIP when a file is absent:
 | `firmware/GBA_bios.rom` with `systems/gba/`: tollrunner_jam, Another_world, Megaman Battle Network, Rhythm Tengoku, WarioWare Inc., Yu-Gi-Oh! Worldwide Edition | `gba:game:*`, `engine:gba`, `gba:game-frontend` |
 | `systems/sms/`: mai_nurse, Galactic Protector; `systems/gamegear/`: Prince of Persia (a Master System cartridge), Frogger, Nazo Puyo; `firmware/SMS_us_1.3.sms`, `SMS_jp_2.1.sms` | `sms:game:*`, `gg:game:*` |
 | `systems/sg1000/`: Pitman, Monaco GP, foryster | `sg1000:game:*` |
+| `systems/pcengine/`: Bomberman (U), Bomberman '93 (J), Bomberman '94 (J), 1941 - Counter Attack (SGX) | `pce:game:*`, `sgx:game:1941` |
+| `firmware/PCECD_3.0-(J).pce` with `systems/pcEngineCD/`: F1 Team Simulation Project F, Magical Dinosaur Tour (.cue and .img) | `pcecd:game:*`, `pcecd:state-size`, `engine:pcecd`, `pcecd:frontend` |
+| `systems/wonderswan/`: Saint Seiya - Ougon Densetsu Hen | `wsc:game:saintseiya`, `wsc:game-frontend` |
 | `firmware/Coleco_Bios.bin` with `systems/coleco/`: Carnival, Oil's Well | `coleco:*` (the test program too), `coleco:game:*`, `coleco:power-renamed`, `engine:coleco`, `coleco:frontend`, `coleco:keybinds` |
 
 ### The owner's NES games and BIOS files (optional, local only)
@@ -212,11 +215,10 @@ python3 <chimera>/tools/check-core-texts.py .
 
 It runs Chimera's window headless (no display) on projects it makes with
 `chimera-run --new-project`, and compares the console's RAM with the native
-reference's: 15 checks (the NES's 5, the Super NES's 3, the Game Boy's 3,
-the Master System's, Game Gear's and SG-1000's 4), three more with
-`MESEN_CONTENT_DIR` (the real rhythm ROM, Sonic, the Disk System), six
-more with `MESEN_SYSTEMS_CONTENT` (a Super NES game, the Super Game Boy, a
-Game Boy Color game, a Game Boy Advance game, the ColecoVision's two) and
+reference's: 22 checks (the NES's 5, and each other machine's test program
+in the window and its default keys), more with `MESEN_CONTENT_DIR` (the
+real rhythm ROM, Sonic, the Disk System) and `MESEN_SYSTEMS_CONTENT` (a
+game of each machine whose BIOS or games are the owner's): 33 in all; and
 one with `MESEN_FAMISTUDIO_ROMS`. Its files stay in `waterbox/tests/work/` (ignored by
 git). `--qt-lib` is for a window built against a Qt the system does not
 know of, such as `~/qt/6.12.0/gcc_64/lib` after `tools/ci-chimera.sh`.
@@ -234,7 +236,10 @@ package; then Chimera's `publish-core.yml` publishes it.
 | What | Where | When |
 | --- | --- | --- |
 | The game (.nes, .unf) | the Cartridge slot | always (the NES) |
-| The game (.sfc, .smc, .bs, .st; .gb, .gbc; .gba; .sms, .gg, .sg, .col, .rom, .bin) | the Game slot | always (the other machines) |
+| The game (.sfc, .smc, .bs, .st; .gb, .gbc; .gba; .pce, .sgx; .sms, .gg, .sg, .col, .rom, .bin; .ws, .wsc) | the Game slot | always (the other machines) |
+| A PC Engine CD game's .cue, with the image it names beside it | the Disc slot | the PC Engine CD |
+| The Super CD-ROM System card 3.0 (syscard3.pce, 256 KiB) or the Games Express card (gecard.pce) | firmware, asked for by the disc | the PC Engine CD |
+| Bandai's WonderSwan boot ROM (bootrom.ws, bootrom.wsc) | firmware | Boot ROM on |
 | A chip's program (dsp1.rom, dsp1b.rom, dsp2.rom, dsp3.rom, dsp4.rom, st010.rom, st011.rom, st018.rom) | firmware, asked for by the game | a Super NES game with that chip |
 | The Super Game Boy's program (SGB1.sfc, 256 KiB) or the Super Game Boy 2's (SGB2.sfc, 512 KiB) | firmware | the Super Game Boy |
 | Nintendo's Super Game Boy boot ROM (sgb_boot.bin, sgb2_boot.bin) | firmware | Boot ROM = Nintendo's |

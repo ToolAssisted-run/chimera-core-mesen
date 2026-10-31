@@ -1018,6 +1018,8 @@ pass:
 | 5 | PC Engine (PCE), SuperGrafx (SGX), PC Engine CD (PCECD) | test program (the CD needs its BIOS) |
 | 6 | WonderSwan (WS), WonderSwan Color (WSC) | test program |
 
+(Steps 5 and 6 were done and committed together.)
+
 ## 2026-10-31: the machines, and the Super NES (sixth round, step 1)
 
 ### What stays the NES's
@@ -1341,6 +1343,135 @@ Start not wired (`gg:buttons`), the Game Boy Advance's BIOS check removed
 (`gba:bios-required`), Mesen's own power cycle used for a game given from
 memory (`coleco:power-renamed`: "Power changed nothing").
 
+## 2026-10-31: the PC Engine, SuperGrafx, PC Engine CD and WonderSwan (sixth round, steps 5 and 6)
+
+### The PC Engine, SuperGrafx and PC Engine CD
+
+- Machines `PCE` ("PC Engine / TurboGrafx-16"), `SGX` ("SuperGrafx") and
+  `PCECD` ("PC Engine CD"), each with the "PC Engine Controller" (Up Down
+  Left Right I II Select Run, ares's letters for I, II and Run) and five
+  players through the multitap (the TurboTap), shown at 320x239.
+- Settings: Console Model (`pceModel`: auto, PC Engine, TurboGrafx-16) for
+  the PC Engine and the CD; Controller Port (`pcePort`: a pad, nothing, the
+  multitap); Memory at Power On (random). The SuperGrafx machine is always
+  a SuperGrafx (Mesen's console type), whatever the file's extension.
+- Mesen's UI's palette for the PC Engine (512 colours) is carried in
+  `waterbox/pce-palette.inc`, since the core's own is all zeros; its
+  overscan (3 lines at the top, 18 columns at either side) as the UI has
+  it. A picture that mixes the video chip's resolutions is drawn at four
+  times its size by Mesen (up to 1168x968): the core makes room for that
+  for these machines only.
+- The PC Engine CD: the game is the disc slot's .cue, with the image it
+  names beside it in the project. The card in the console's slot is
+  firmware asked for by the disc (SuggestSettings, as the Super NES's
+  chips): the Super CD-ROM System card 3.0 (syscard3.pce, 256 KiB) for
+  every disc but Games Express's, which take the Games Express card
+  (gecard.pce, 32 KiB), as Mesen decides it (8 bytes at the start of
+  sector 0x10). Both pinned to the owner's files. The core refuses a disc
+  without its card, naming the file (`error.no_pce_card`).
+- Patch 0011 (`MESEN_CHUNK_LIMIT`): Mesen reads a disc image 256 KiB at a
+  time and kept every piece it had read, so a long game kept the whole
+  image (300 MiB for the owner's) in memory, and in every savestate; the
+  core keeps the last 8.
+
+### The WonderSwan and WonderSwan Color
+
+- Machines `WS` ("WonderSwan") and `WSC` ("WonderSwan Color"), always the
+  console they are named after (Mesen's model), "WonderSwan Controls" (X1
+  to X4, Y1 to Y4, Start, A, B, and the console's Power and Sound), shown
+  at 224x144 (Mesen turns the picture for a game held upright, and adds the
+  LCD's icons beside it).
+- Boot ROM (`wsBootRom`: off, as Mesen has it, or on with Bandai's boot
+  program as the firmware bootrom.ws or bootrom.wsc, no SHA-1 pinned: the
+  owner has neither, so it was never run).
+- Colour correction off (pow(), as the Game Boy Advance's).
+- A fix to Mesen, patch 0012 (`MESEN_ZERO_WS_ROWS`): the WonderSwan's
+  picture chip kept two rows of pixels with no initial value
+  (`WsPpu::_rowData`), and the first frame read one before any line had
+  been drawn into it. Saint Seiya's first picture differed between the
+  native build and the sandbox in 70 pixels of line 127, which valgrind
+  traced to that memory. The rows now start at zero. Rebuilt without the
+  option, the difference did not come back in that run (the memory
+  happened to hold the same in both): the check cannot be made to fail on
+  demand, so this fix stands on valgrind's finding.
+
+### The test programs
+
+- `tests/pce-test/make-pce-test.py` (`pce-test.pce`, `sgx-test.sgx`): our
+  own HuC6280 program. It sets the video chip's display timing with the
+  background on, reads the controller port the way a game reads the
+  multitap (the port reset, then for each of five pads the directions and
+  the buttons), keeps the five pads in RAM, makes the backdrop pad 1's
+  byte and plays the sound chip's channel 0 at a frequency that byte
+  gives. A plain pad answers each of the five reads as pad 1.
+- `tests/ws-test/ws-test.asm` with `make-ws-test.py` (`ws-test.ws`, built
+  with nasm; the result is committed so the tests need no nasm): our own
+  V30MZ program. It reads the three groups of buttons into RAM, makes the
+  background's shade the X and Y groups' bits, and plays channel 1 at a
+  frequency they give. The same file is both WonderSwan machines' test.
+
+### Checks
+
+- On the test programs (CI runs them): `pce:*` (one pad), `pce-multitap:*`
+  (five), `sgx:*`, `ws:*`, `wsc:*` - equivalence, input, buttons,
+  savestate, turbo, session, bus each; `sgx:second-vdc` (the SuperGrafx
+  machine has the second video chip, the PC Engine machine not, on the
+  same HuCard); `pcecd:card-required` (a disc made at test time - a .cue
+  and an image of one data track - is refused without its card, which is
+  the System Card, or the Games Express card when the disc has the Games
+  Express signature).
+- The owner's games: Bomberman (with a pad, and with the multitap, where
+  its battle mode finds the five pads: with a pad it says "TAP IS NOT
+  CONNECTED"), Bomberman '93 and '94; 1941 Counter Attack on the
+  SuperGrafx; F1 Team Simulation Project F and Magical Dinosaur Tour (an
+  American disc, with the Japanese System Card) on the PC Engine CD, 3000
+  frames each (the frame 1800 of F1 Team is black between scenes); Saint
+  Seiya on the WonderSwan Color. `pcecd:state-size`: after 3000 frames of
+  F1 Team, a savestate is 3.8 MiB (5.7 MiB without patch 0011, every piece
+  of the image read so far kept); the check asks for under 4.5 MiB.
+- Through chimera-run: `engine:pce`, `engine:pce-multitap`, `engine:sgx`,
+  `engine:ws`, `engine:wsc`, `engine:pce-polls`, and `engine:pcecd` (the
+  .cue given with `--file disc=`; chimera-run puts the image it names into
+  the project itself, as a "support" file with its SHA-1; SuggestSettings
+  names the System Card; the movie replayed by another chimera-run ends on
+  the native reference's work RAM).
+- In the window: `pce:frontend`, `pce-multitap:frontend`, `sgx:frontend`,
+  `ws:frontend`, `wsc:frontend`, `pce:keybinds`, `ws:keybinds`,
+  `pcecd:frontend` (F1 Team), `wsc:game-frontend` (Saint Seiya).
+
+Seen to fail, with the adapter broken on purpose in five places and the two
+new build options left out: the PC Engine's I and II swapped
+(`pce:buttons`), the multitap's players one off (`pce-multitap:input`,
+`pce-multitap:buttons`, `engine:pce-multitap`, and Bomberman with the
+multitap: "the pad did not reach the game"), the SuperGrafx machine built
+as a PC Engine (`sgx:second-vdc`), the WonderSwan's X and Y groups swapped
+(`ws:input`, `ws:buttons`, `engine:ws`), the CD's card not checked
+(`pcecd:card-required`: Mesen then only says the disc did not load). The
+state of F1 Team was 5.7 MiB without patch 0011 (the check's limit was set
+from it).
+
+Not tried, or not offered: a Games Express disc (none among the owner's
+files; only the card's choice is checked, on a disc made here); the PC
+Engine's six-button pad (Avenue Pad 6) and the other controllers Mesen
+has; the Pocket Challenge V2 and the SwanCrystal (WonderSwan models Mesen
+has: not offered); a WonderSwan game held upright (the owner's one game is
+held flat); the WonderSwan's boot ROM; HuCard games with a CD unit
+(Mesen's "CD-ROM for HuCard games") and the Arcade Card's games.
+
+## Questions for the owner (sixth round)
+
+- The Satellaview needs the BS-X BIOS (BS-X.bin, the BS-X cartridge's
+  program, 1 MiB): is there one to try the two .bs games with? The Sufami
+  Turbo needs its BIOS (SufamiTurbo.sfc) and a Sufami Turbo game; the
+  WonderSwan's boot ROM is bootrom.ws (4 KiB) or bootrom.wsc (8 KiB).
+- Should the Super NES's mouse and Super Scope, the Master System's Light
+  Phaser, the PC Engine's six-button pad, and the SwanCrystal and Pocket
+  Challenge V2 be offered too? Each is a setting and controls, and needs a
+  game or a test program to prove it.
+- The Game Boy Advance could get a test program of its own if Mesen's
+  "skip the boot screen" were offered as a setting (the BIOS would then
+  not check Nintendo's logo): is that wanted?
+
 ## Where this stands (2026-10-31, sixth round)
 
 Works, and is tested here on Linux against Chimera main cb46d2b7
@@ -1349,44 +1480,60 @@ Works, and is tested here on Linux against Chimera main cb46d2b7
 - Everything the fifth round left (the NES, the EPSM, the Disk System, the
   devices), unchanged: the NES machine is the published one (`nes:published`,
   `engine:nes-published`).
-- New: the package is several machines, picked by the setting **Console**
-  (`machine`). Offered so far: the **Super NES** (pads, the multitap, the
-  chips' programs as each game's firmware, Clock Start for the SPC7110's
-  clock and the Satellaview's date) and the **Super Game Boy** (Super Game
-  Boy and Super Game Boy 2, Mesen's or Nintendo's boot ROM), the **Game
-  Boy** and the **Game Boy Color** (Mesen's or Nintendo's boot ROM), the
-  **Game Boy Advance** (with the owner's BIOS only), the **Master System**,
-  the **Game Gear**, the **SG-1000** and the **ColecoVision** (with the
-  owner's BIOS only).
-- Commands and counts: `run-gate.sh` 92 ok with neither Chimera nor the
-  owner's files, 108 ok with Chimera, 173 ok with Chimera, MESEN_CONTENT_DIR,
-  MESEN_SYSTEMS_CONTENT and MESEN_PUBLISHED_PACKAGE; `run-frontend.sh` 15 ok
-  without the owner's files, 24 ok with them; `test-packages` PASS (0
-  failed); `check-core-texts.py` 136 keys; `check-names.py` 0 in 26 tables;
+- Every system Mesen emulates is offered, as fifteen machines of one
+  package picked by the setting **Console** (`machine`): the NES (the
+  default), the Super NES (with its chips' programs as each game's
+  firmware; the Satellaview and the Sufami Turbo declared), the Super Game
+  Boy, the Game Boy, the Game Boy Color, the Game Boy Advance, the PC
+  Engine, the SuperGrafx, the PC Engine CD, the Master System, the Game
+  Gear, the SG-1000, the ColecoVision, the WonderSwan and the WonderSwan
+  Color. Each has its controller (with default keys and a gamepad for
+  player 1), its memory domains and a system bus, savestates, lag frames
+  and the input-poll callback, and was run natively, sandboxed, through
+  chimera-run's projects and movies, and in the window.
+- Commands and counts: `run-gate.sh` 129 ok with neither Chimera nor the
+  owner's files, 151 ok with Chimera, 226 ok with Chimera, MESEN_CONTENT_DIR,
+  MESEN_SYSTEMS_CONTENT and MESEN_PUBLISHED_PACKAGE; `run-frontend.sh` 22 ok
+  without the owner's files, 33 ok with them; `test-packages` PASS (0
+  failed); `check-core-texts.py` 163 keys; `check-names.py` 0 in 26 tables;
   Chimera's `check-proper-nouns.py` 0.
+- Twelve patches to Mesen, each a build option (`patches/`); the four new
+  this round: 0009 the cartridges' clocks on the machine's time, 0010 a
+  file with no folder kept as named, 0011 at most 8 pieces of a disc image
+  kept, 0012 the WonderSwan's row buffers zeroed.
 
 Not done, or not proved:
 
-- The PC Engine machines and the WonderSwan (steps 5 and 6 above): not
-  offered yet.
-- Patch 0009 (the cartridges' clocks on the machine's time) is in the
-  build, but no game here reads such a clock in a way a check could see
-  (see step 2).
-- The Satellaview (.bs) and the Sufami Turbo (.st): declared, never run (no
-  BIOS was given; the owner's two .bs games need the BS-X BIOS).
+- **The Satellaview** (.bs): declared, never run. Mesen needs the BS-X
+  BIOS (BS-X.bin), which is not among the owner's files; the owner's two
+  .bs games wait for it. **The Sufami Turbo** (.st): declared, never run
+  (no BIOS, no game).
 - The Super NES chips DSP-2, DSP-3, DSP-4, ST010, ST011 and ST018: their
   programs load and the cartridge runs, but no game with one was tried and
-  their programs were not exercised (the DSP-1's and DSP-1B's multiply was).
-  The Cx4, SA-1, Super FX, S-DD1, SPC7110 and OBC1 were not tried (no game
-  with one is among the owner's).
-- The Super NES test program makes no sound (it does not load a program
-  into the sound CPU); the sound is proved on the owner's games only, so CI
-  proves the Super NES's sound only as native == sandbox on silence.
-- Nintendo's Super Game Boy boot ROMs were not run (the Game Boy's and
-  the Game Boy Color's were, on Kirby and Super Mario Bros. Deluxe).
-- The mouse, the Super Scope and the other Super NES devices Mesen has are
-  not offered.
-- No Windows run of the new machines.
+  their programs were not exercised (the DSP-1's and DSP-1B's multiply
+  was). The Cx4, SA-1, Super FX, S-DD1, SPC7110 and OBC1 were not tried
+  (no game with one is among the owner's).
+- Patch 0009 (the clocks) is in the build but proved by no check: no game
+  here reads a clock in a way a check could see (step 2).
+- No test program of our own for the Game Boy Advance (Mesen needs the
+  BIOS, which checks Nintendo's logo); each of its buttons on its own is
+  not checked. CI runs nothing of the Game Boy Advance, the ColecoVision,
+  the PC Engine CD or the Super Game Boy (their BIOS files are the
+  owner's).
+- The Super NES test program makes no sound; the Super NES's sound is
+  proved on the owner's games only.
+- Not offered: the Super NES's mouse and Super Scope, the NES's other
+  expansion devices, the Master System's Light Phaser, the PC Engine's
+  six-button pad, the Game Gear's BIOS, the WonderSwan's SwanCrystal and
+  Pocket Challenge V2 models, Mesen's music file players (NSF, SPC, GBS,
+  HES). Nintendo's Super Game Boy boot ROMs and Bandai's WonderSwan boot
+  ROMs were not run (the latter are not among the owner's files).
+- No Windows run of the new machines; CI has not run them (the repository's
+  CI was written for the NES and runs the same scripts).
+- Mesen compares settings structures with their padding
+  (`UpdateControlDevices`, valgrind: "depends on uninitialised value"); it
+  decides only whether the controllers are built again, and native and
+  sandbox agreed everywhere, so it was left as it is.
 
 Traps, new this round:
 
@@ -1401,3 +1548,10 @@ Traps, new this round:
   larger (the default is 600), so give `--frames` as the file's length.
 - The WonderSwan's and Game Boy Advance's colour correction (pow()) differs
   in its last bit between the sandbox's C library and the host's: off.
+- A check that looks at the last frame's buttons can miss two swapped
+  buttons: hold each alone (`<machine>:buttons`).
+- A test script reads the adapter's source (`texts:chimera`): do not edit
+  the adapter while one runs.
+- The ColecoVision's games choose a game with the keypad on their first
+  screen; the pad exercise's Start is the keypad's 1 there.
+- Mesen does not emulate the SG-1000's Hold button.

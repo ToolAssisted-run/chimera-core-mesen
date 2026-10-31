@@ -33,12 +33,16 @@
         "gb",
         "gbc",
         "gba",
+        "pce",
+        "sgx",
         "sms",
         "gg",
         "sg",
         "col",
         "rom",
-        "bin"
+        "bin",
+        "ws",
+        "wsc"
       ],
       "help": "slot.cart.help",
       "exposedWhen": {
@@ -49,11 +53,29 @@
           "gb",
           "gbc",
           "gba",
+          "pce",
+          "sgx",
           "sms",
           "gg",
           "sg1000",
-          "coleco"
+          "coleco",
+          "ws",
+          "wsc"
         ]
+      }
+    },
+    {
+      "id": "disc",
+      "title": "slot.disc",
+      "min": 1,
+      "max": 1,
+      "formats": [
+        "cue"
+      ],
+      "help": "slot.disc.help",
+      "exposedWhen": {
+        "setting": "machine",
+        "is": "pcecd"
       }
     },
     {

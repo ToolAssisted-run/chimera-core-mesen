@@ -1,0 +1,27 @@
+Build option MESEN_ZERO_WS_ROWS: the WonderSwan's picture chip starts with
+its row buffers zeroed.
+
+WsPpu::_rowData (the two rows of pixels being drawn) had no initial value,
+and the first frame read a row before any line had been drawn into it: the
+first picture of a WonderSwan game depended on what the memory held before
+(valgrind: "conditional jump depends on uninitialised value", allocated in
+WsConsole::LoadRom). The picture of Saint Seiya's first frame differed
+between a native build and the sandbox in 70 pixels of line 127. With this
+option the rows start at zero. Off, nothing changes.
+
+--- a/Core/WS/WsPpu.h
++++ b/Core/WS/WsPpu.h
+@@ -31,7 +31,13 @@
+ 		uint8_t Priority;
+ 	};
+ 
++#ifdef MESEN_ZERO_WS_ROWS
++	//Zeroed: the first frame read a row before any line had been drawn into
++	//it, so the picture depended on what the memory held before
++	PixelData _rowData[2][224] = {};
++#else
+ 	PixelData _rowData[2][224];
++#endif
+ 
+ 	uint16_t _screenHeight = 0;
+ 	uint16_t _screenWidth = 0;

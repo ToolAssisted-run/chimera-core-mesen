@@ -170,7 +170,7 @@ sys_game_leg() { # tag machine file settings frames [src=id]...
 	local need
 	for need in "$file" "$@"; do
 		need="${need%%=*}"
-		[ "$need" = "$file" ] || need="$scontent/firmware/$need"
+		[ "$need" = "$file" ] || [ -f "$need" ] || need="$scontent/firmware/$need"
 		if [ -z "$scontent" ] || [ ! -f "$need" ]; then
 			report "$tag" SKIP "needs $(basename "$need") in MESEN_SYSTEMS_CONTENT"
 			return
@@ -324,6 +324,41 @@ systems_core() {
 	sys_game_leg coleco:game:oilswell coleco "$cvg/Oil's Well (1984)(Sierra On-Line).bin" '{"machine":"coleco"}' 1800 Coleco_Bios.bin=bios.col
 	sys_power_leg coleco:power-renamed coleco "$cvg/Oil's Well (1984)(Sierra On-Line).bin" '{"machine":"coleco"}' Coleco_Bios.bin=bios.col
 
+	# ------------------------------------------------------------ the PC Engine and the WonderSwan
+	sys_program_legs pce pce "$root/tests/roms/pce-test.pce" '{"machine":"pce"}' 1 480 "Work RAM"
+	sys_program_legs pce-multitap pce "$root/tests/roms/pce-test.pce" '{"machine":"pce","pcePort":"multitap"}' 5 480 "Work RAM"
+	sys_program_legs sgx sgx "$root/tests/roms/sgx-test.sgx" '{"machine":"sgx"}' 1 480 "Work RAM"
+	sys_program_legs ws ws "$root/tests/roms/ws-test.ws" '{"machine":"ws"}' 1 480 "Work RAM"
+	sys_program_legs wsc wsc "$root/tests/roms/ws-test.ws" '{"machine":"wsc"}' 1 480 "Work RAM"
+	sys_sgx_leg
+	sys_card_leg
+	local pceg="$scontent/systems/pcengine" cdg="$scontent/systems/pcEngineCD" wsg="$scontent/systems/wonderswan"
+	sys_game_leg pce:game:bomberman pce "$pceg/Bomberman (U).pce" '{"machine":"pce"}' 1800
+	sys_game_leg pce:game:bomberman-multitap pce "$pceg/Bomberman (U).pce" '{"machine":"pce","pcePort":"multitap"}' 2400
+	sys_game_leg pce:game:bomberman93 pce "$pceg/Bomberman '93 (J).pce" '{"machine":"pce"}' 1800
+	sys_game_leg pce:game:bomberman94 pce "$pceg/Bomberman '94 (J).pce" '{"machine":"pce"}' 1800
+	sys_game_leg sgx:game:1941 sgx "$pceg/1941 - Counter Attack (J) (SGX).pce" '{"machine":"sgx"}' 1800
+	sys_cd_leg pcecd:game:f1team "$cdg/F1 Team Simulation Project F (JP).cue" 3000
+	sys_cd_leg pcecd:game:dinosaur "$cdg/Magical Dinosaur Tour (US).cue" 3000
+	# what of the disc image stays in memory (patch 0011): after 3000 frames
+	# of F1 Team Simulation Project F, which has read the disc all along, a
+	# savestate of the whole machine is under 4.5 MiB (3.8 MiB measured with
+	# the patch, 5.7 MiB without it: every piece of the image read so far)
+	if [ -f "$work/pcecd:game:f1team.raw" ]; then
+		local cdwd="$work/sys.pcecd:game:f1team" size
+		rw "$cdwd" --frames 3000 --exercise --wire "$(python3 -I "$sys_py" wire pcecd)" --pad "$(python3 -I "$sys_py" pad pcecd)" \
+			--save-at 2999 "$work/pcecd.state" > /dev/null 2>&1
+		size="$(stat -c %s "$work/pcecd.state" 2>/dev/null)"
+		if [ -n "$size" ] && [ "$size" -lt 4718592 ]; then
+			report "pcecd:state-size" PASS "a savestate at frame 2999 of F1 Team Simulation Project F is $size bytes"
+		else
+			report "pcecd:state-size" FAIL "a savestate at frame 2999 is ${size:-not there} bytes"
+		fi
+	else
+		report "pcecd:state-size" SKIP "needs the pcecd:game:f1team run"
+	fi
+	sys_game_leg wsc:game:saintseiya wsc "$wsg/Saint Seiya - Ougon Densetsu Hen - Perfect Edition (Japan).wsc" '{"machine":"wsc"}' 1800
+
 	local g
 	g="$scontent/systems/snes"
 	sys_game_leg snes:game:smw snes "$g/Super Mario World (U) [!].smc" '{"machine":"snes"}' 1800
@@ -393,6 +428,70 @@ sys_power_leg() { # tag machine file settings [src=id]...
 	fi
 }
 
+# The SuperGrafx machine is a SuperGrafx: Mesen builds the second video chip
+# (the domain "VRAM 2") for the SuperGrafx machine and not for the PC
+# Engine's, the same HuCard in both.
+sys_sgx_leg() {
+	local wp ws
+	wp="$(sysdir sgx-vdc2-pce "$root/tests/roms/pce-test.pce" '{"machine":"pce"}')"
+	ws="$(sysdir sgx-vdc2-sgx "$root/tests/roms/pce-test.pce" '{"machine":"sgx"}')"
+	rw "$wp" --frames 10 2>/dev/null > "$work/sgx-vdc2.pce"
+	rw "$ws" --frames 10 2>/dev/null > "$work/sgx-vdc2.sgx"
+	if grep -q '^domain\[VRAM 2\]' "$work/sgx-vdc2.pce"; then
+		report "sgx:second-vdc" FAIL "the PC Engine machine has a second video chip"
+	elif ! grep -q '^domain\[VRAM 2\]' "$work/sgx-vdc2.sgx"; then
+		report "sgx:second-vdc" FAIL "the SuperGrafx machine has no second video chip"
+	else
+		report "sgx:second-vdc" PASS "the SuperGrafx machine has the second video chip (VRAM 2) and the PC Engine machine not, on the same HuCard"
+	fi
+}
+
+# A PC Engine CD disc needs its card: a disc made here (a .cue and an image
+# of one data track, no game on it) is refused without the card, and the
+# card the error names is the Super CD-ROM System card 3.0, or, for the same
+# disc with the Games Express signature in sector 0x10, the Games Express
+# card (Mesen's own test, PceConsole::LoadFirmware).
+sys_card_leg() {
+	local wd n ge
+	for ge in 0 1; do
+		wd="$work/card.$ge"
+		rm -rf "$wd" && mkdir -p "$wd"
+		python3 -I - "$wd" "$ge" <<'PYDISC'
+import sys
+wd, ge = sys.argv[1], sys.argv[2] == "1"
+open(wd + "/disc.cue", "w").write('FILE "disc.img" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n')
+img = bytearray(2352 * 32)
+if ge:
+    img[0x10 * 2352 + 16:0x10 * 2352 + 24] = bytes([0x01, 0x43, 0x44, 0x30, 0x30, 0x31, 0x01, 0x00])
+open(wd + "/disc.img", "wb").write(bytes(img))
+PYDISC
+		printf '{"disc":["disc.cue"]}' > "$wd/slots"
+		printf '{"machine":"pcecd"}' > "$wd/settings"
+		rw "$wd" --frames 10 > /dev/null 2> "$work/card.$ge.err"
+	done
+	if ! grep -q 'no_pce_card.syscard3.pce' "$work/card.0.err"; then
+		report "pcecd:card-required" FAIL "a disc without its card: $(grep -v '^\[mesen\]' "$work/card.0.err" | head -1)"
+	elif ! grep -q 'no_pce_card.gecard.pce' "$work/card.1.err"; then
+		report "pcecd:card-required" FAIL "a Games Express disc without its card: $(grep -v '^\[mesen\]' "$work/card.1.err" | head -1)"
+	else
+		report "pcecd:card-required" PASS "a disc is refused without its card, which is the Super CD-ROM System card 3.0, or the Games Express card for a Games Express disc"
+	fi
+}
+
+# A PC Engine CD game: its .cue and the image it names in the work dir (the
+# .sub and .ccd beside them are not the game's: Mesen reads the .cue and the
+# image), and the Super CD-ROM System card 3.0. The game leg's checks, and
+# the disc's card asked for by SuggestSettings.
+sys_cd_leg() { # tag cue frames
+	local tag="$1" cue="$2" frames="$3"
+	local img="${cue%.cue}.img"
+	if [ -z "$scontent" ] || [ ! -f "$cue" ] || [ ! -f "$img" ] || [ ! -f "$scontent/firmware/PCECD_3.0-(J).pce" ]; then
+		report "$tag" SKIP "needs $(basename "$cue"), its image and PCECD_3.0-(J).pce in MESEN_SYSTEMS_CONTENT"
+		return
+	fi
+	sys_game_leg "$tag" pcecd "$cue" '{"machine":"pcecd"}' "$frames" "PCECD_3.0-(J).pce=syscard3.pce" "$img=$(basename "$img")"
+}
+
 # Through Chimera's engine: the test program's schedule written as a Chimera
 # movie with the machine's active controls, made into a project by one
 # chimera-run and replayed by another, ends on the native reference's RAM.
@@ -436,6 +535,40 @@ sys_engine_leg() { # check machine rom settings players frames domain [src=id]..
 	fi
 }
 
+# A PC Engine CD game through chimera-run: the .cue given in the disc slot
+# and its image as another file of the project; the card SuggestSettings
+# names; a movie made into a project by one chimera-run and replayed by
+# another ends on the native reference's work RAM.
+sys_cd_engine_leg() {
+	local cue="$scontent/systems/pcEngineCD/F1 Team Simulation Project F (JP).cue" card="$scontent/firmware/PCECD_3.0-(J).pce"
+	local img="${cue%.cue}.img" pd="$work/eng.pcecd" wd
+	if [ -z "$scontent" ] || [ ! -f "$cue" ] || [ ! -f "$img" ] || [ ! -f "$card" ]; then
+		report "engine:pcecd" SKIP "needs F1 Team Simulation Project F and PCECD_3.0-(J).pce in MESEN_SYSTEMS_CONTENT"
+		return
+	fi
+	rm -rf "$pd" && mkdir -p "$pd" && cp "$cue" "$img" "$pd/"
+	python3 -I "$sys_py" schedule pcecd 1 1200 "$work/pcecd.inputs" 300
+	python3 -I "$sys_py" movie pcecd 1 "$work/pcecd.inputs" "$work/pcecd.movie.txt"
+	"$runner" --new-project "$pd/p.chimeraProject" "$package" --file "disc=$pd/$(basename "$cue")" \
+		--movie "$work/pcecd.movie.txt" --settings '{"machine":"pcecd"}' --firmware "syscard3.pce=$card" > "$pd/make.log" 2>&1
+	"$runner" --project "$pd/p.chimeraProject" "$package" --suggest > "$pd/suggest.txt" 2>&1
+	"$runner" --project "$pd/p.chimeraProject" "$package" --files "$pd" --firmware "syscard3.pce=$card" \
+		--dump "Work RAM=$work/pcecd.engine.ram" --meta "$work/pcecd.meta" > "$pd/log" 2>&1
+	wd="$(sysdir eng.pcecd "$cue" "$(python3 -I -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["settings"]))' "$pd/p.chimeraProject" 2>/dev/null)" "$card=syscard3.pce" "$img=$(basename "$img")")"
+	python3 -I -c 'import json, sys; print(json.dumps({"disc": [sys.argv[1]]}))' "$(basename "$cue")" > "$wd/slots"
+	"$rn" "$wd" --frames 1200 --inputs "$work/pcecd.inputs" --wire "$(python3 -I "$sys_py" wire pcecd)" \
+		--dump-domain "Work RAM" "$work/pcecd.native.ram" > /dev/null 2>&1
+	if [ "$(sed -n 's/^frames=//p' "$work/pcecd.meta" 2>/dev/null)" != 1200 ]; then
+		report "engine:pcecd" FAIL "the movie did not play 1200 frames: $(tail -1 "$pd/make.log") $(tail -1 "$pd/log")"
+	elif ! grep -q 'syscard3.pce' "$pd/suggest.txt"; then
+		report "engine:pcecd" FAIL "SuggestSettings did not name the Super CD-ROM System card: $(head -c 200 "$pd/suggest.txt")"
+	elif ! cmp -s "$work/pcecd.native.ram" "$work/pcecd.engine.ram"; then
+		report "engine:pcecd" FAIL "the movie through Chimera ends on another work RAM than the native run"
+	else
+		report "engine:pcecd" PASS "F1 Team Simulation Project F: the .cue in the disc slot, its image beside it, the card SuggestSettings names; a 1200-frame movie replayed by another chimera-run ends on the native reference's work RAM"
+	fi
+}
+
 # Each read of the controls reaches Chimera as it happens (its input-poll
 # callback, chimera#344): the machine's test program reads them every frame.
 sys_polls_leg() { # check machine rom settings players frames
@@ -472,6 +605,13 @@ systems_engine() {
 	else
 		report "engine:coleco" SKIP "needs Coleco_Bios.bin in MESEN_SYSTEMS_CONTENT/firmware"
 	fi
+	sys_engine_leg engine:pce pce "$root/tests/roms/pce-test.pce" '{"machine":"pce"}' 1 480 "Work RAM"
+	sys_engine_leg engine:pce-multitap pce "$root/tests/roms/pce-test.pce" '{"machine":"pce","pcePort":"multitap"}' 5 480 "Work RAM"
+	sys_engine_leg engine:sgx sgx "$root/tests/roms/sgx-test.sgx" '{"machine":"sgx"}' 1 480 "Work RAM"
+	sys_engine_leg engine:ws ws "$root/tests/roms/ws-test.ws" '{"machine":"ws"}' 1 480 "Work RAM"
+	sys_engine_leg engine:wsc wsc "$root/tests/roms/ws-test.ws" '{"machine":"wsc"}' 1 480 "Work RAM"
+	sys_polls_leg engine:pce-polls pce "$root/tests/roms/pce-test.pce" '{"machine":"pce"}' 1 300
+	sys_cd_engine_leg
 	local mmbn="$scontent/systems/gba/Megaman Battle Network (U) [!].gba"
 	if [ -n "$scontent" ] && [ -f "$mmbn" ] && [ -f "$scontent/firmware/GBA_bios.rom" ]; then
 		sys_engine_leg engine:gba gba "$mmbn" '{"machine":"gba"}' 1 900 EWRAM GBA_bios.rom=gba_bios.bin

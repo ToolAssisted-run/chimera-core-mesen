@@ -4,11 +4,11 @@ This repository builds MesenCE (Mesen 2's community edition) as a sandboxed
 guest for Chimera and packages it as `mesen.chimeraCore`: `core.wbx` (the
 emulator built for miniBox), `waterbox.config`, `file_slots.json`,
 `default_keybinds.json`, `languages/`, `pictures/`, the licence texts and
-`build.json`. It runs the NES, with the EPSM, and, as machines of the same
-package picked by the setting `machine`, the Super NES, the Super Game
-Boy, the Game Boy, the Game Boy Color, the Game Boy Advance, the Master
-System, the Game Gear, the SG-1000 and the ColecoVision; Mesen's other
-systems are being added one by one (owner, 2026-10-31).
+`build.json`. It runs the NES, with the EPSM, and every other system Mesen
+emulates (owner, 2026-10-31), as machines of the same package picked by
+the setting `machine`: the Super NES, Super Game Boy, Game Boy, Game Boy
+Color, Game Boy Advance, PC Engine, SuperGrafx, PC Engine CD, Master
+System, Game Gear, SG-1000, ColecoVision, WonderSwan and WonderSwan Color.
 `docs/BUILDING.md` has every step; `docs/PLAN.md` the reasons and the state
 of the work.
 
@@ -20,7 +20,8 @@ of the work.
   at each read of the controls, bare file names, saved games kept by the
   host, no network code, the Arkanoid knob where the host says, the EPSM
   plugged in by a setting, the cartridges' clocks on the machine's time, a
-  file with no folder kept as named). `patches/series-marker` names the
+  file with no folder kept as named, a disc image's pieces kept to eight,
+  the WonderSwan's row buffers zeroed). `patches/series-marker` names the
   string the last patch adds.
 - `meson.build` - one build, two flavors: native (`run-native`, `run-wbx`)
   and guest (`core.wbx`, through the cross file `waterbox/setup-guest.sh`
@@ -51,11 +52,11 @@ MB=<chimera>/extern/chimera-common-minibox     # built with -Dguest_cpp=true in 
 git submodule update --init
 meson setup build/meson-native -Dminibox_dir="$MB" && ninja -C build/meson-native -j4
 sh waterbox/setup-guest.sh -m "$MB" && ninja -C build/meson-guest -j4
-./waterbox/run-gate.sh                                   # 92 ok, 0 failed, the engine and game checks skipped
+./waterbox/run-gate.sh                                   # 129 ok, 0 failed, the engine and game checks skipped
 ./waterbox/build-package.sh -m "$MB" -o build/Cores
 <chimera>/build/meson-linux/source/ui/test-packages build/Cores
-CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 108 ok, 0 failed (173 with every owner's file)
-./waterbox/tests/run-frontend.sh --chimera-root <chimera> [--qt-lib <Qt lib folder>]   # 15 ok (24 with the owner's files)
+CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 151 ok, 0 failed (226 with every owner's file)
+./waterbox/tests/run-frontend.sh --chimera-root <chimera> [--qt-lib <Qt lib folder>]   # 22 ok (33 with the owner's files)
 python3 <chimera>/tools/check-core-texts.py .            # every key named
 ```
 

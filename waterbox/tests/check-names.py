@@ -43,7 +43,7 @@ NAMES = ["Mesen", "MesenCE", "NES", "iNES", "NES 2.0", "UNIF", "Famicom", "Ninte
          "Game Boy Advance", "Satellaview", "BS-X", "Sufami Turbo", "DSP-1", "DSP-1B", "DSP-2", "DSP-3", "DSP-4",
          "ST010", "ST011", "ST018", "SameBoy", "PC Engine", "PC Engine CD", "TurboGrafx-16", "SuperGrafx",
          "ColecoVision", "Master System", "Game Gear", "SG-1000", "Sega", "WonderSwan", "WonderSwan Color", "Bandai",
-         "NEC", "Hudson", "YM2413", "TurboTap", "Super CD-ROM System", "CD-ROM",
+         "NEC", "Hudson", "YM2413", "TurboTap", "Super CD-ROM System", "CD-ROM", "Games Express", "System Card",
          "Chimera", "TAStudio", "GitHub", "Lua", "Windows", "Linux", "macOS", "OpenGL", "Vulkan", "Direct3D", "SQLite",
          "miniBox", "ffmpeg", "Qt", "Wayland"]
 try:

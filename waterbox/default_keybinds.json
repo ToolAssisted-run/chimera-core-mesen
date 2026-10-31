@@ -96,6 +96,29 @@
       "P1 Key 0": "Number0",
       "P1 Key *": "Minus",
       "P1 Key #": "Equals"
+    },
+    "PC Engine Controller": {
+      "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
+      "P1 Down": "Down, J1 POV0D, X1 DpadDown, X1 LStickDown",
+      "P1 Left": "Left, J1 POV0L, X1 DpadLeft, X1 LStickLeft",
+      "P1 Right": "Right, J1 POV0R, X1 DpadRight, X1 LStickRight",
+      "P1 II": "Z, J1 B1, X1 X",
+      "P1 I": "X, J1 B2, X1 A",
+      "P1 Select": "Space, J1 B9, X1 Back",
+      "P1 Run": "Enter, J1 B10, X1 Start"
+    },
+    "WonderSwan Controls": {
+      "P1 X1": "Up, J1 POV0U, X1 DpadUp",
+      "P1 X2": "Right, J1 POV0R, X1 DpadRight",
+      "P1 X3": "Down, J1 POV0D, X1 DpadDown",
+      "P1 X4": "Left, J1 POV0L, X1 DpadLeft",
+      "P1 Y1": "W, X1 RStickUp",
+      "P1 Y2": "D, X1 RStickRight",
+      "P1 Y3": "S, X1 RStickDown",
+      "P1 Y4": "A, X1 RStickLeft",
+      "P1 Start": "Enter, J1 B10, X1 Start",
+      "P1 A": "X, J1 B2, X1 A",
+      "P1 B": "Z, J1 B1, X1 X"
     }
   },
   "AllTrollersAutoFire": {

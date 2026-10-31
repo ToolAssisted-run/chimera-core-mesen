@@ -41,3 +41,11 @@ The input schedules in `tests/inputs/` were written for this repository.
   SG-1000 and ColecoVision, built by `tests/sms-test/make-sms-test.py`: it
   keeps what it reads from the controllers in its RAM and shows and sounds
   player 1's buttons. The ColecoVision's runs only with the console's BIOS.
+- `pce-test.pce`, `sgx-test.sgx` - this repository's own PC Engine test
+  program (the same file twice), built by `tests/pce-test/make-pce-test.py`:
+  it reads the controller port as a game reads the multitap and keeps the
+  five pads in RAM, and shows and sounds pad 1.
+- `ws-test.ws` - this repository's own WonderSwan test program, built from
+  `tests/ws-test/ws-test.asm` by `tests/ws-test/make-ws-test.py` (with
+  nasm): it keeps the three groups of buttons in RAM and shows and sounds
+  them. It is both WonderSwan machines' test.

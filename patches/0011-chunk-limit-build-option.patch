@@ -1,0 +1,41 @@
+Build option MESEN_CHUNK_LIMIT: a file read a piece at a time keeps at most
+this many of its pieces in memory.
+
+Mesen reads a CD image (a PC Engine CD's .img or .bin) 256 KiB at a time
+through VirtualFile::ReadByte and keeps every piece it has read. Over a
+long game that is the whole image, hundreds of MiB, in memory - in a
+sandbox, in every savestate. With this option set to a number, the oldest
+pieces past that number are forgotten (and read again from the file when
+they are needed). Unset, nothing changes.
+
+--- a/Utilities/VirtualFile.h
++++ b/Utilities/VirtualFile.h
+@@ -14,6 +14,10 @@
+ 	int64_t _fileSize = -1;
+ 
+ 	vector<vector<uint8_t>> _chunks;
++#ifdef MESEN_CHUNK_LIMIT
++	//The chunks read so far, oldest first: at most MESEN_CHUNK_LIMIT are kept
++	vector<uint32_t> _chunkOrder;
++#endif
+ 	bool _useChunks = false;
+ 
+ 	void FromStream(std::istream& input, vector<uint8_t>& output);
+--- a/Utilities/VirtualFile.cpp
++++ b/Utilities/VirtualFile.cpp
+@@ -291,6 +291,15 @@
+ 
+ 		_chunks[chunkId].resize(VirtualFile::ChunkSize);
+ 		input.read((char*)_chunks[chunkId].data(), VirtualFile::ChunkSize);
++#ifdef MESEN_CHUNK_LIMIT
++		//A disc image is read a chunk at a time and every chunk was kept:
++		//a long game kept the whole image in memory. Forget the oldest.
++		_chunkOrder.push_back(chunkId);
++		if(_chunkOrder.size() > MESEN_CHUNK_LIMIT) {
++			vector<uint8_t>().swap(_chunks[_chunkOrder.front()]);
++			_chunkOrder.erase(_chunkOrder.begin());
++		}
++#endif
+ 	}
+ 	return _chunks[chunkId][offset - chunkStart];
+ }

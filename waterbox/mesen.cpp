@@ -70,6 +70,7 @@
 #include "PCE/PceMemoryManager.h"
 #include "PCE/PceVce.h"
 #include "PCE/Input/PceController.h"
+#include "Shared/CdReader.h"
 #include "SMS/SmsConsole.h"
 #include "SMS/SmsMemoryManager.h"
 #include "SMS/Input/SmsController.h"
@@ -1032,6 +1033,31 @@ static int epsm_stores(const uint8_t *prg, size_t n)
 
 #include "snes-coprocessor.inc"
 
+/* A PC Engine CD's disc needs the program of a card in the console's slot:
+ * the Super CD-ROM System card 3.0 for almost every disc, the Games Express
+ * card for the Games Express discs, which Mesen tells by 8 bytes at the
+ * start of sector 0x10 (PceConsole::LoadFirmware). 1 for a Games Express
+ * disc, 0 for another, -1 when the .cue cannot be read. */
+static int pce_games_express(const char *cue)
+{
+	VirtualFile file{ std::string(cue) };
+	DiscInfo disc = {};
+	if (!CdReader::LoadCue(file, disc) || disc.Tracks.empty())
+		return -1;
+	if (disc.Tracks[0].Format == TrackFormat::Audio)
+		return 0;
+	static const uint8_t signature[8] = { 0x01, 0x43, 0x44, 0x30, 0x30, 0x31, 0x01, 0x00 };
+	std::vector<uint8_t> data;
+	disc.ReadDataSector(0x10, data);
+	return data.size() >= sizeof signature && memcmp(data.data(), signature, sizeof signature) == 0;
+}
+static const char kSyscard3[] = "{\"id\": \"syscard3.pce\", \"display\": \"firmware.syscard3\", "
+	"\"description\": \"firmware.syscard3.about\", \"name\": \"syscard3.pce\", \"size\": 262144, "
+	"\"sha1\": \"79F5FF55DD10187C7FD7B8DAAB0B3FFBD1F56A2C\", \"nameHints\": [\"syscard\", \"super cd\"]}";
+static const char kGecard[] = "{\"id\": \"gecard.pce\", \"display\": \"firmware.gecard\", "
+	"\"description\": \"firmware.gecard.about\", \"name\": \"gecard.pce\", \"size\": 32768, "
+	"\"sha1\": \"014881A959E045E00F4DB8F52955200865D40280\", \"nameHints\": [\"gecard\", \"games express\"]}";
+
 /* What the core would choose before the game boots (Chimera's new-project
  * window asks it instead of Init, on the same mounts). A cartridge whose
  * header has the EPSM gets the EPSM's drums suggested, and with them the
@@ -1063,6 +1089,15 @@ ECL_EXPORT const char *SuggestSettings(void)
 			snprintf(answer, sizeof answer, "{\"values\": {}, \"note\": \"suggest.snes_chip\", \"firmware\": [%s]}", fw);
 		else
 			snprintf(answer, sizeof answer, "{\"values\": {}, \"note\": \"suggest.snes_plain\"}");
+		return answer;
+	}
+	if (machine == M_PCECD) {
+		int ge = pce_games_express(file);
+		if (ge < 0)
+			snprintf(answer, sizeof answer, "{\"values\": {}, \"note\": \"suggest.pce_no_cue\"}");
+		else
+			snprintf(answer, sizeof answer, "{\"values\": {}, \"note\": \"%s\", \"firmware\": [%s]}",
+				ge ? "suggest.pce_gecard" : "suggest.pce_syscard", ge ? kGecard : kSyscard3);
 		return answer;
 	}
 	if (machine != M_NES) {
@@ -1229,6 +1264,15 @@ ECL_EXPORT int Init(void)
 		if (g_machine == M_PCECD && ext != ".cue") {
 			snprintf(g_loadError, sizeof g_loadError, "error.not_cue" TEXT_ARG "%s", file);
 			return 0;
+		}
+		if (g_machine == M_PCECD) {
+			int ge = pce_games_express(file);
+			if (ge < 0) {
+				snprintf(g_loadError, sizeof g_loadError, "error.rejected" TEXT_ARG "%s", file);
+				return 0;
+			}
+			if (!need_file(ge ? "gecard.pce" : "syscard3.pce", "error.no_pce_card"))
+				return 0;
 		}
 
 		std::string given = machine_name(file);

@@ -312,6 +312,16 @@ fi
 # never in this repository) the same, with nothing held; SKIP without them. ---
 sys_py="$here/systems.py"
 scontent="${MESEN_SYSTEMS_CONTENT:-}"
+# how many players a machine's test program reads with these settings: five
+# through a multitap; one on the handhelds and on the PC Engine without one
+# (whose one pad answers each of the multitap's five reads); two otherwise
+players_of() { # machine settings
+	case "$2" in *multitap*) echo 5; return ;; esac
+	case "$1" in
+		gb|gbc|gba|gg|ws|wsc|pce|sgx|pcecd) echo 1 ;;
+		*) echo 2 ;;
+	esac
+}
 system_window_leg() { # check tag file settings system-id domain hold-names [src=id firmware]...
 	local check="$1" tag="$2" file="$3" settings="$4" sysid="$5" domain="$6" holdnames="$7"
 	shift 7
@@ -357,7 +367,7 @@ system_window_leg() { # check tag file settings system-id domain hold-names [src
 	elif [ -n "$holdnames" ] && cmp -s "$work/$tag.ram.bin" "$work/native.$tag.idle.bin"; then
 		report "$check" FAIL "holding $holdnames changed nothing"
 	elif [ -n "$holdnames" ] && [ "$file" != "${file#$root/tests/roms/}" ] && \
-		! python3 -I "$sys_py" check "$machine" "$(case "$settings" in *multitap*) echo 5 ;; *) echo 2 ;; esac)" "$work/$tag.inputs" "$work/$tag.ram.bin" > "$work/$tag.check.txt" 2>&1; then
+		! python3 -I "$sys_py" check "$machine" "$(players_of "$machine" "$settings")" "$work/$tag.inputs" "$work/$tag.ram.bin" > "$work/$tag.check.txt" 2>&1; then
 		report "$check" FAIL "the test program read: $(cat "$work/$tag.check.txt")"
 	else
 		report "$check" PASS "$sysid, $frames frames in the window${holdnames:+ with $holdnames held}: $domain == native${holdnames:+, != idle}"
@@ -431,6 +441,47 @@ if [ -f "$sgames/gba/Megaman Battle Network (U) [!].gba" ] && [ -f "$scontent/fi
 else
 	report "gba:game-frontend" SKIP "needs Megaman Battle Network and GBA_bios.rom in MESEN_SYSTEMS_CONTENT"
 fi
+
+system_window_leg pce:frontend pce "$root/tests/roms/pce-test.pce" '{"machine":"pce"}' PCE "Work RAM" "P1 Right,P1 Run"
+system_window_leg pce-multitap:frontend pcemt "$root/tests/roms/pce-test.pce" '{"machine":"pce","pcePort":"multitap"}' PCE "Work RAM" "P2 I,P5 Up"
+system_window_leg sgx:frontend sgx "$root/tests/roms/sgx-test.sgx" '{"machine":"sgx"}' SGX "Work RAM" "P1 Down,P1 II"
+system_window_leg ws:frontend ws "$root/tests/roms/ws-test.ws" '{"machine":"ws"}' WS "Work RAM" "P1 X2,P1 Y3,P1 A"
+system_window_leg wsc:frontend wsc "$root/tests/roms/ws-test.ws" '{"machine":"wsc"}' WSC "Work RAM" "P1 X1,P1 Start"
+# a PC Engine CD game in the window: the .cue in the disc slot, its image a
+# second file of the project, the card as firmware
+cdcue="$sgames/pcEngineCD/F1 Team Simulation Project F (JP).cue"
+cdcard="$scontent/firmware/PCECD_3.0-(J).pce"
+if [ -f "$cdcue" ] && [ -f "${cdcue%.cue}.img" ] && [ -f "$cdcard" ]; then
+	dir="$work/project.pcecd"
+	rm -rf "$dir" && mkdir -p "$dir" && cp "$cdcue" "${cdcue%.cue}.img" "$dir/"
+	"$crun" --new-project "$dir/pcecd.chimeraProject" "$package" --file "disc=$dir/$(basename "$cdcue")" \
+		--settings '{"machine":"pcecd"}' --firmware "syscard3.pce=$cdcard" > "$dir/make.log" 2>&1
+	python3 -I "$here/settings-config.py" "$work/window.pcecd.json" '{}' "{\"syscard3.pce\": \"$cdcard\"}"
+	wd="$work/native.pcecd"
+	rm -rf "$wd" && mkdir -p "$wd" && cp "$cdcue" "${cdcue%.cue}.img" "$wd/" && cp "$cdcard" "$wd/syscard3.pce"
+	python3 -I -c 'import json, sys; print(json.dumps({"disc": [sys.argv[1]]}))' "$(basename "$cdcue")" > "$wd/slots"
+	python3 -I -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["settings"]))' "$dir/pcecd.chimeraProject" > "$wd/settings"
+	"$rn" "$wd" --frames "$frames" --wire 1,8 --dump-domain "Work RAM" "$work/native.pcecd.ram.bin" > "$work/native.pcecd.txt" 2>&1
+	printf 'frames=%s\nout=%s\nmeta=%s\nshot=\nhold=\nsystem=PCECD\ndomain=Work RAM\n' "$frames" "$work/pcecd.ram.bin" "$work/pcecd.meta.txt" > "$work/job.pcecd.txt"
+	( cd "$work" && MINIHAWK_JOB="$work/job.pcecd.txt" timeout -s KILL 900 "$chimera_exe" --headless \
+		"--config=$work/window.pcecd.json" "--core=$package" "--lua=$here/frontend-ram.lua" "--project=$dir/pcecd.chimeraProject" ) > "$work/pcecd.log" 2>&1
+	if ! { [ -f "$work/pcecd.meta.txt" ] && grep -q "^status=OK" "$work/pcecd.meta.txt"; }; then
+		report "pcecd:frontend" FAIL "the window did not report OK (see tests/work/pcecd.log)"
+	elif ! cmp -s "$work/native.pcecd.ram.bin" "$work/pcecd.ram.bin"; then
+		report "pcecd:frontend" FAIL "Work RAM differs from the native reference"
+	else
+		report "pcecd:frontend" PASS "PCECD, F1 Team Simulation Project F, $frames frames in the window: Work RAM == native"
+	fi
+else
+	report "pcecd:frontend" SKIP "needs F1 Team Simulation Project F and PCECD_3.0-(J).pce in MESEN_SYSTEMS_CONTENT"
+fi
+if [ -f "$sgames/wonderswan/Saint Seiya - Ougon Densetsu Hen - Perfect Edition (Japan).wsc" ]; then
+	system_window_leg wsc:game-frontend seiya "$sgames/wonderswan/Saint Seiya - Ougon Densetsu Hen - Perfect Edition (Japan).wsc" '{"machine":"wsc"}' WSC "Work RAM" ""
+else
+	report "wsc:game-frontend" SKIP "needs Saint Seiya in MESEN_SYSTEMS_CONTENT"
+fi
+system_keys_leg pce:keybinds pcekeys "$root/tests/roms/pce-test.pce" '{"machine":"pce"}' "PC Engine Controller"
+system_keys_leg ws:keybinds wskeys "$root/tests/roms/ws-test.ws" '{"machine":"ws"}' "WonderSwan Controls"
 
 # --- the bindings the package ships are the machine's when nobody changed them ---
 p="$(make_project keys nova.nes '{}')"
