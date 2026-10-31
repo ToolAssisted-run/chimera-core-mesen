@@ -23,7 +23,7 @@
 		"setting.ram.random": "Zufällig",
 		"setting.ram.zeros": "Alles Nullen",
 		"setting.region": "Region",
-		"setting.region.about": "Auf welcher Konsole das Spiel läuft: ein amerikanisches oder japanisches NTSC-NES (60 Bilder pro Sekunde), ein europäisches PAL-NES (50) oder ein Dendy (der russische Nachbau, 50). Auto nimmt den Header des Moduls oder Mesens Spieledatenbank. Es ist Teil der Maschine, also braucht ein Film denselben Wert.",
+		"setting.region.about": "Auf welcher Konsole das Spiel läuft: ein amerikanisches oder japanisches NTSC-NES (60 Bilder pro Sekunde), ein europäisches PAL-NES (50) oder ein Dendy (der russische Nachbau, 50). Auto nimmt den Header des Moduls oder die Spieledatenbank von Mesen. Es ist Teil der Maschine, also braucht ein Film denselben Wert.",
 		"setting.region.auto": "Auto",
 		"setting.region.dendy": "Dendy",
 		"setting.region.ntsc": "NTSC",

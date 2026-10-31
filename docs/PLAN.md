@@ -368,6 +368,40 @@ the old package): it named 23 socket functions and the netplay and luasocket
 symbols. Every other check passes unchanged: `run-gate.sh` 33 ok with
 `CHIMERA_ROOT`, `run-frontend.sh` 5 ok, `test-packages` 21 PASS.
 
+## 2026-10-31: names in the language tables
+
+The owner's rule (2026-10-31): proper nouns are never translated or bent.
+Chimera's own checker (`tools/check-proper-nouns.py`) knows only Chimera's
+names, and found nothing here. This core's names were bent in 9 of the 25
+translated tables, 33 times:
+
+- a genitive or case ending glued on: "Mesens" (Danish, German, Norwegian,
+  Swedish), "Mesenin" (Finnish), "Mesennek" (Hungarian), "Mesenu" (Czech),
+  "Mesena" (Polish);
+- an ending after a sign: "YMF288:n", "EPSM:n" (Finnish), "YMF288:s",
+  "EPSM:s" (Swedish), "YMF288's", "EPSM's" (Danish), "Mesen'in", "EPSM'yi"
+  (Turkish), "EPSM-et" (Hungarian).
+
+Each sentence now puts a common noun beside the name, by hand: "databazi
+her emulatoru Mesen", "Mesen-emulaattorin", "YMF288-piirin", "rytm-ROM fran
+YMF288", "Mesen emulatornak", "Mesen emulatorunun", "EPSM cipini" (accents
+left out here, as this file is ASCII). A
+compound joined by a hyphen ("NES-Spiel", "EPSM-rummut") leaves the name
+whole and stays.
+
+`waterbox/tests/check-names.py` checks it, as `texts:names` in
+`run-gate.sh`: every name the English text holds must be in each
+translation as itself, and no name may have letters glued to it, directly,
+after an apostrophe or a colon, or as a short lower-case ending after a
+hyphen. Its names are this core's (Mesen, MesenCE, NES, iNES, NES 2.0,
+UNIF, Famicom, Nintendo, EPSM, YMF288, YM2608, Yamaha, Dendy, NTSC, PAL,
+Zapper, Four Score, Arkanoid, Vaus, Taito, and the package's coreName) and
+Chimera's. File names (`ym2608_adpcm_rom.bin`) are not names in a sentence.
+It was run with one bent text left (Swedish `suggest.epsm`, "YMF288:s") and
+`run-gate.sh` failed on it (34 ok, 1 failed); with that text fixed it passes.
+`texts:chimera` runs Chimera's `check-core-texts.py` and
+`check-proper-nouns.py` too when `CHIMERA_ROOT` is given.
+
 ## Where this stands (2026-10-31)
 
 Works, and is tested here on Linux:

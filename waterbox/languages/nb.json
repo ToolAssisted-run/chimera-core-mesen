@@ -23,7 +23,7 @@
 		"setting.ram.random": "Tilfeldig",
 		"setting.ram.zeros": "Bare nuller",
 		"setting.region": "Region",
-		"setting.region.about": "Hvilken konsoll spillet kjører på: en amerikansk eller japansk NTSC-NES (60 bilder i sekundet), en europeisk PAL-NES (50) eller en Dendy (den russiske klonen, 50). Auto tar kassettens header eller Mesens spilldatabase. Det er en del av maskinen, så en film trenger samme verdi.",
+		"setting.region.about": "Hvilken konsoll spillet kjører på: en amerikansk eller japansk NTSC-NES (60 bilder i sekundet), en europeisk PAL-NES (50) eller en Dendy (den russiske klonen, 50). Auto tar kassettens header eller spilldatabasen i Mesen. Det er en del av maskinen, så en film trenger samme verdi.",
 		"setting.region.auto": "Auto",
 		"setting.region.dendy": "Dendy",
 		"setting.region.ntsc": "NTSC",

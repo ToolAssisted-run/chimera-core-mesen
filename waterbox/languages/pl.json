@@ -23,7 +23,7 @@
 		"setting.ram.random": "Losowa",
 		"setting.ram.zeros": "Same zera",
 		"setting.region": "Region",
-		"setting.region.about": "Na jakiej konsoli działa gra: amerykański lub japoński NES NTSC (60 klatek na sekundę), europejski NES PAL (50) albo Dendy (rosyjski klon, 50). Auto bierze nagłówek kartridża lub bazę gier Mesena. To część maszyny, więc film potrzebuje tej samej wartości.",
+		"setting.region.about": "Na jakiej konsoli działa gra: amerykański lub japoński NES NTSC (60 klatek na sekundę), europejski NES PAL (50) albo Dendy (rosyjski klon, 50). Auto bierze nagłówek kartridża lub bazę gier emulatora Mesen. To część maszyny, więc film potrzebuje tej samej wartości.",
 		"setting.region.auto": "Auto",
 		"setting.region.dendy": "Dendy",
 		"setting.region.ntsc": "NTSC",

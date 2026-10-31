@@ -366,6 +366,28 @@ else
 	report "build:no-network" FAIL "$(printf '%s' "$nn" | short)"
 fi
 
+# ---------------------------------------------------------------- the texts
+# Proper nouns are never translated or bent (owner, 2026-10-31): Mesen, NES,
+# EPSM, YMF288 and the rest stay as written in all 26 language tables.
+if nm_out="$(python3 -I "$here/tests/check-names.py" "$here/languages" 2>&1)"; then
+	report "texts:names" PASS "$(printf '%s' "$nm_out" | tail -1)"
+else
+	report "texts:names" FAIL "$(printf '%s' "$nm_out" | grep -v 'bent or missing names in' | short)"
+fi
+# Chimera's own checks of a core's texts, when a Chimera checkout is given:
+# every key named and every name a key, and Chimera's names unbent.
+ct="${CHIMERA_ROOT:-}/tools/check-core-texts.py"
+pn="${CHIMERA_ROOT:-}/tools/check-proper-nouns.py"
+if [ -n "${CHIMERA_ROOT:-}" ] && [ -f "$ct" ] && [ -f "$pn" ]; then
+	if ct_out="$(python3 -I "$ct" "$root" 2>&1)" && pn_out="$(python3 -I "$pn" "$here" 2>&1)"; then
+		report "texts:chimera" PASS "$(printf '%s' "$ct_out" | tail -1); $(printf '%s' "$pn_out" | tail -1)"
+	else
+		report "texts:chimera" FAIL "$(printf '%s %s' "${ct_out:-}" "${pn_out:-}" | short)"
+	fi
+else
+	report "texts:chimera" SKIP "needs CHIMERA_ROOT with tools/check-core-texts.py and tools/check-proper-nouns.py"
+fi
+
 # ---------------------------------------------------------------- Chimera's engine
 # Each read of the controls reaches Chimera as it happens, so a Lua script's
 # event.oninputpoll runs there (chimera#344): every frame the game read them

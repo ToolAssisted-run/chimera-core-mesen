@@ -23,7 +23,7 @@
 		"setting.ram.random": "Náhodná",
 		"setting.ram.zeros": "Samé nuly",
 		"setting.region": "Oblast",
-		"setting.region.about": "Na které konzoli hra běží: americký nebo japonský NES NTSC (60 snímků za sekundu), evropský NES PAL (50) nebo Dendy (ruský klon, 50). Automaticky bere hlavičku cartridge nebo databázi her Mesenu. Je to součást stroje, takže film potřebuje stejnou hodnotu.",
+		"setting.region.about": "Na které konzoli hra běží: americký nebo japonský NES NTSC (60 snímků za sekundu), evropský NES PAL (50) nebo Dendy (ruský klon, 50). Automaticky bere hlavičku cartridge nebo databázi her emulátoru Mesen. Je to součást stroje, takže film potřebuje stejnou hodnotu.",
 		"setting.region.auto": "Automaticky",
 		"setting.region.dendy": "Dendy",
 		"setting.region.ntsc": "NTSC",
