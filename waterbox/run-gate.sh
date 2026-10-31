@@ -188,6 +188,51 @@ else
 	report "bus:look" PASS "the whole bus read after each of 3000 frames: same machine, same bus in both flavors, \$0000-\$07FF is RAM"
 fi
 
+# The PPU bus (bus 1): the picture chip's 16 KiB. Read whole after every
+# frame it must leave the machine as it was too, and read the same in both
+# flavors.
+rw "$wd" "${args[@]}" --look-ppu 2>/dev/null > "$work/lookppu.raw"
+"$rn" "$wd" "${args[@]}" --look-ppu 2>/dev/null > "$work/lookppu.nat"
+digests < "$work/lookppu.raw" > "$work/lookppu.box"
+if ! cmp -s "$work/nova.box" "$work/lookppu.box"; then
+	report "bus:ppu-look" FAIL "reading the PPU bus changed the machine: $(diff "$work/nova.box" "$work/lookppu.box" | short)"
+elif [ "$(grep '^ppuBusHash' "$work/lookppu.raw")" != "$(grep '^ppuBusHash' "$work/lookppu.nat")" ] || [ -z "$(grep '^ppuBusHash' "$work/lookppu.raw")" ]; then
+	report "bus:ppu-look" FAIL "the PPU bus reads differently in the two flavors"
+else
+	report "bus:ppu-look" PASS "the whole PPU bus read after each of 3000 frames: same machine, same bus in both flavors"
+fi
+# What the PPU bus holds, on the input test cartridge (CHR RAM, its picture
+# in nametable 0): $0000-$1FFF is the CHR RAM domain, $2000-$23FF the first
+# KiB of CIRAM, $3F00-$3F1F the palette with its four mirrored entries.
+pw="$(workdir bus.ppu input-test.nes '{}')"
+for dom in "CHR RAM" CIRAM PALRAM; do "$rn" "$pw" --frames 60 --dump-domain "$dom" "$work/ppu.$dom" > /dev/null 2>&1; done
+"$rn" "$pw" --frames 60 --dump-bus 1 "$work/ppu.nat" > /dev/null 2>&1
+rw "$pw" --frames 60 --dump-bus 1 "$work/ppu.box" > /dev/null 2>&1
+ppu="$(python3 -I - "$work" <<'PYPPU'
+import sys
+w = sys.argv[1]
+bus = open(w + "/ppu.nat", "rb").read()
+chr_ram = open(w + "/ppu.CHR RAM", "rb").read()
+ciram = open(w + "/ppu.CIRAM", "rb").read()
+pal = open(w + "/ppu.PALRAM", "rb").read()
+bad = []
+if len(bus) != 0x4000: bad.append("the bus is %d bytes" % len(bus))
+if bus[:0x2000] != chr_ram[:0x2000]: bad.append("$0000-$1FFF is not CHR RAM")
+if bus[0x2000:0x2400] != ciram[:0x400]: bad.append("$2000-$23FF is not CIRAM")
+mirror = lambda i: i & ~0x10 if i in (0x10, 0x14, 0x18, 0x1C) else i
+if any(bus[0x3F00 + i] != pal[mirror(i)] for i in range(32)): bad.append("$3F00-$3F1F is not PALRAM")
+if bus[0x2000:0x2400].count(1) != 480: bad.append("nametable 0 does not hold the cartridge's 480 white tiles")
+print("; ".join(bad) if bad else "ok")
+PYPPU
+)"
+if [ ! -s "$work/ppu.box" ] || ! cmp -s "$work/ppu.nat" "$work/ppu.box"; then
+	report "bus:ppu" FAIL "the PPU bus differs between the two flavors"
+elif [ "$ppu" != ok ]; then
+	report "bus:ppu" FAIL "$ppu"
+else
+	report "bus:ppu" PASS "\$0000-\$1FFF is CHR RAM, \$2000-\$23FF CIRAM (480 white tiles), \$3F00-\$3F1F the palette; native == sandbox"
+fi
+
 # ---------------------------------------------------------------- the EPSM
 # The same program with and without the EPSM header: only the EPSM one makes
 # a sound, and only in it does the chip's timer reach the CPU (the program's
@@ -529,14 +574,17 @@ PYMOV
 	"$rn" "$work/nova" "${args[@]}" --dump-domain RAM "$work/mv.native.ram" > /dev/null 2>&1
 	"$runner" --new-project "$work/mv.chimeraProject" "$package" "$root/tests/roms/nova.nes" "$work/nova.movie.txt" > "$work/mv.make.log" 2>&1
 	"$runner" --project "$work/mv.chimeraProject" "$package" --files "$root/tests/roms" \
-		--dump "RAM=$work/mv.engine.ram" --dump "System Bus@0+800=$work/mv.engine.bus" --meta "$work/mv.meta" > "$work/mv.log" 2>&1
+		--dump "RAM=$work/mv.engine.ram" --dump "System Bus@0+800=$work/mv.engine.bus" \
+		--dump "CIRAM=$work/mv.engine.ciram" --dump "PPU Bus@2000+400=$work/mv.engine.ppu" --meta "$work/mv.meta" > "$work/mv.log" 2>&1
 	mvframes=$(sed -n 's/^frames=//p' "$work/mv.meta" 2> /dev/null)
 	if [ "${mvframes:-0}" != 3000 ]; then
 		report "engine:movie" FAIL "the movie played ${mvframes:-no} frames, not 3000: $(tail -1 "$work/mv.log")"
 	elif ! cmp -s "$work/mv.engine.ram" "$work/mv.engine.bus"; then
 		report "engine:movie" FAIL "Chimera's view of the system bus at \$0000-\$07FF is not the RAM domain"
+	elif ! cmp -s -n 1024 "$work/mv.engine.ciram" "$work/mv.engine.ppu" || [ ! -s "$work/mv.engine.ppu" ]; then
+		report "engine:movie" FAIL "Chimera's view of the PPU bus at \$2000-\$23FF is not the first KiB of CIRAM"
 	elif cmp -s "$work/mv.native.ram" "$work/mv.engine.ram"; then
-		report "engine:movie" PASS "Nova's 3000-frame schedule as a Chimera movie ends on the native reference's RAM, which the system bus shows too"
+		report "engine:movie" PASS "Nova's 3000-frame schedule as a Chimera movie ends on the native reference's RAM, which the system bus shows too; the PPU bus shows CIRAM"
 	else
 		report "engine:movie" FAIL "the movie through Chimera ends on another RAM than the native run"
 	fi

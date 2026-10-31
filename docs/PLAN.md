@@ -462,6 +462,37 @@ the same count high and low); the knob at half its place (`dev:arkanoid`:
 0x73, not 0x93); the Zapper's axes said inactive (`engine:devices`). Put
 back: 40 ok, 0 failed with `CHIMERA_ROOT`.
 
+## 2026-10-31: the PPU bus
+
+A second bus, "PPU Bus": the picture chip's 16 KiB as it sees them - the
+cartridge's pattern tables at $0000-$1FFF, the nametables at $2000-$3EFF
+(the console's 2 KiB or the cartridge's, as the mapper wires them, mirrors
+included) and the palette at $3F00-$3FFF. It is read and written through
+the accessors Mesen's own debugger uses (`NesConsole::DebugReadVram` and
+`DebugWriteVram`), which do not tell the mapper an address went by, so no
+MMC3 scanline counter moves when a tool looks. Writes land in CHR RAM or
+ROM, the nametables and the palette; the PPU's registers are not on this
+bus. The memory domains stay as they were (CIRAM, PALRAM, OAM, CHR RAM/ROM).
+
+Checks:
+
+- `bus:ppu-look`: the whole PPU bus read after each of Nova's 3000 frames
+  leaves the machine as it was, and reads the same in both flavors;
+- `bus:ppu`: on the input test cartridge, $0000-$1FFF is the CHR RAM
+  domain, $2000-$23FF the first KiB of CIRAM (its 480 white tiles),
+  $3F00-$3F1F the palette with its four mirrored entries; native == sandbox;
+- `engine:movie` now also reads $2000-$23FF of the PPU bus through
+  chimera-run and finds the first KiB of CIRAM.
+
+Seen to fail: the PPU bus answered with the CPU's bus (`bus:ppu` and
+`engine:movie` failed); the PPU bus read the way a game reads VRAM, by
+writing the address to $2006 and reading $2007 (`bus:ppu-look` failed: the
+picture and CHR RAM changed). A first break, a read of $2002 before each
+byte, was NOT caught: Nova does not poll $2002 at the end of a frame, so
+clearing the vertical blank flag there changes nothing in its run. The
+check proves that the reads Chimera makes leave this game's machine alone,
+not that every side effect would show.
+
 ## Where this stands (2026-10-31)
 
 Works, and is tested here on Linux:

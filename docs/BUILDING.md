@@ -109,7 +109,7 @@ differ.
 ```
 
 It needs `run-native`, `run-wbx` and `core.wbx` built, and builds nothing.
-It ends with `<n> ok, <m> failed`; without Chimera it is 34 checks and one
+It ends with `<n> ok, <m> failed`; without Chimera it is 36 checks and two
 lines saying the checks that need Chimera were skipped. With
 
 ```
@@ -117,7 +117,7 @@ CHIMERA_ROOT=<chimera> MESEN_PACKAGE=<the package> ./waterbox/run-gate.sh
 ```
 
 six more run: Chimera's own checks of the texts, and five through
-`<chimera>/build/dll/chimera-run`: 40 checks.
+`<chimera>/build/dll/chimera-run`: 42 checks.
 `docs/PLAN.md` says what each check compares and how each was seen to
 fail.
 

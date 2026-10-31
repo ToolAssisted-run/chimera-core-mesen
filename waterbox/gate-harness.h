@@ -84,6 +84,9 @@ struct gate_opts
 	const char *loadPath; /* or: the run starts from this machine... */
 	long loadAt;          /* ...at this frame of the schedule */
 	int look;             /* read the whole system bus after every frame, as a tool would */
+	int lookPpu;          /* the same with the PPU bus (bus 1, 16 KiB) */
+	int dumpBus;          /* after the run, bus dumpBus (0 or 1)... */
+	const char *dumpBusPath; /* ...is written here, whole */
 };
 
 static uint64_t gate_fnv(uint64_t h, const void *p, size_t n)
@@ -264,7 +267,7 @@ static int gate_run(const struct gate_core *c, const struct gate_opts *o)
 			gate_exercise_pad(o->loadAt - 1, prev);
 	}
 	uint64_t lastFrame = 0;
-	uint64_t busHash = 0;
+	uint64_t busHash = 0, ppuBusHash = 0;
 	int busIsRam = 1;
 
 	for (long f = o->loadPath ? o->loadAt : 0; f < frames; f++)
@@ -350,6 +353,9 @@ static int gate_run(const struct gate_core *c, const struct gate_opts *o)
 					busIsRam = 0;
 		}
 
+		if (o->lookPpu && c->read_bus)
+			ppuBusHash = gate_fnv(ppuBusHash, c->read_bus(1, 0, 0x4000), 0x4000);
+
 		if (o->screenshotPath && f == frames - 1)
 			gate_write_tga(o->screenshotPath, video, w, h);
 	}
@@ -366,6 +372,16 @@ static int gate_run(const struct gate_core *c, const struct gate_opts *o)
 	printf("lagFrames=%ld\n", lag);
 	if (o->look)
 		printf("busHash=%016llx\nbusIsRam=%d\n", (unsigned long long)busHash, busIsRam);
+	if (o->lookPpu)
+		printf("ppuBusHash=%016llx\n", (unsigned long long)ppuBusHash);
+	if (o->dumpBusPath && c->read_bus)
+	{
+		int32_t size = o->dumpBus == 0 ? 0x10000 : 0x4000;
+		FILE *bf = fopen(o->dumpBusPath, "wb");
+		if (!bf) { perror(o->dumpBusPath); return 1; }
+		fwrite(c->read_bus(o->dumpBus, 0, size), 1, (size_t)size, bf);
+		fclose(bf);
+	}
 	int nd = c->domain_count();
 	for (int i = 0; i < nd; i++)
 	{
@@ -428,6 +444,8 @@ static int gate_parse_opts(int argc, char **argv, int first, struct gate_opts *o
 		else if (!strcmp(argv[i], "--save-at") && i + 2 < argc) { o->saveAt = strtol(argv[++i], 0, 0); o->savePath = argv[++i]; }
 		else if (!strcmp(argv[i], "--load-at") && i + 2 < argc) { o->loadAt = strtol(argv[++i], 0, 0); o->loadPath = argv[++i]; }
 		else if (!strcmp(argv[i], "--look")) o->look = 1;
+		else if (!strcmp(argv[i], "--look-ppu")) o->lookPpu = 1;
+		else if (!strcmp(argv[i], "--dump-bus") && i + 2 < argc) { o->dumpBus = (int)strtol(argv[++i], 0, 0); o->dumpBusPath = argv[++i]; }
 		else if (!strcmp(argv[i], "--rerecord")) ; /* run-wbx's; ignored here */
 		else { fprintf(stderr, "unknown argument %s\n", argv[i]); return 0; }
 	}

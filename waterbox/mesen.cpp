@@ -645,50 +645,66 @@ ECL_EXPORT int GetMemoryDomainWritable(int i)
 	return k >= 0 && kDomains[k].type != MemoryType::NesPrgRom && kDomains[k].type != MemoryType::NesChrRom;
 }
 
-/* ---- the system bus: the CPU's 64 KiB as the CPU sees it ----
- * Read and written through Mesen's debugger accessors (PeekRam and
- * DebugWrite), which have no side effects: reading $2002 does not clear the
- * vertical blank, and a write lands only in RAM and the cartridge's memory,
- * never in a register. */
-static NesMemoryManager *bus_memory()
+/* ---- the buses ----
+ * 0 "System Bus": the CPU's 64 KiB as the CPU sees it, read and written
+ * through Mesen's debugger accessors (PeekRam and DebugWrite), which have no
+ * side effects: reading $2002 does not clear the vertical blank, and a write
+ * lands only in RAM and the cartridge's memory, never in a register.
+ * 1 "PPU Bus": the picture chip's 16 KiB as it sees them - the cartridge's
+ * pattern tables at $0000-$1FFF, the nametables at $2000-$3EFF (the
+ * console's 2 KiB or the cartridge's, as the mapper wires them) and the
+ * palette at $3F00-$3FFF - read and written through the same accessors
+ * Mesen's debugger uses (DebugReadVram, DebugWriteVram), which do not
+ * tell the mapper an address went by (no MMC3 scanline counter moves). */
+#define BUS_COUNT 2
+static const char *const kBusNames[BUS_COUNT] = { "System Bus", "PPU Bus" };
+static const int64_t kBusSizes[BUS_COUNT] = { 0x10000, 0x4000 };
+
+static NesConsole *bus_console()
 {
-	if (!g_emu)
-		return NULL;
-	NesConsole *nes = dynamic_cast<NesConsole *>(g_emu->GetConsoleUnsafe());
-	return nes ? nes->GetMemoryManager() : NULL;
+	return g_emu ? dynamic_cast<NesConsole *>(g_emu->GetConsoleUnsafe()) : NULL;
 }
 
-ECL_EXPORT int GetBusCount(void) { return 1; }
-ECL_EXPORT const char *GetBusName(int i) { return i == 0 ? "System Bus" : NULL; }
-ECL_EXPORT int64_t GetBusSize(int i) { return i == 0 ? 0x10000 : 0; }
-ECL_EXPORT int GetBusWritable(int i) { return i == 0; }
+static uint8_t bus_read(NesConsole *nes, int bus, uint16_t addr)
+{
+	return bus == 0 ? nes->GetMemoryManager()->DebugRead(addr) : nes->DebugReadVram(addr & 0x3FFF);
+}
+
+ECL_EXPORT int GetBusCount(void) { return BUS_COUNT; }
+ECL_EXPORT const char *GetBusName(int i) { return i >= 0 && i < BUS_COUNT ? kBusNames[i] : NULL; }
+ECL_EXPORT int64_t GetBusSize(int i) { return i >= 0 && i < BUS_COUNT ? kBusSizes[i] : 0; }
+ECL_EXPORT int GetBusWritable(int i) { return i >= 0 && i < BUS_COUNT; }
 
 ECL_EXPORT int PeekBus(int bus, int addr)
 {
-	NesMemoryManager *m = bus_memory();
-	if (bus != 0 || m == NULL || addr < 0 || addr > 0xFFFF)
+	NesConsole *nes = bus_console();
+	if (nes == NULL || bus < 0 || bus >= BUS_COUNT || addr < 0 || addr >= kBusSizes[bus])
 		return 0;
-	return m->DebugRead((uint16_t)addr);
+	return bus_read(nes, bus, (uint16_t)addr);
 }
 
 ECL_EXPORT void PokeBus(int bus, int addr, int value)
 {
-	NesMemoryManager *m = bus_memory();
-	if (bus != 0 || m == NULL || addr < 0 || addr > 0xFFFF)
+	NesConsole *nes = bus_console();
+	if (nes == NULL || bus < 0 || bus >= BUS_COUNT || addr < 0 || addr >= kBusSizes[bus])
 		return;
-	m->DebugWrite((uint16_t)addr, (uint8_t)value, true);
+	if (bus == 0)
+		nes->GetMemoryManager()->DebugWrite((uint16_t)addr, (uint8_t)value, true);
+	else
+		nes->DebugWriteVram((uint16_t)addr, (uint8_t)value);
 }
 
-/* up to 64 KiB of the bus at once, into memory no savestate carries */
+/* up to 64 KiB of a bus at once, into memory no savestate carries */
 ECL_INVISIBLE static uint8_t g_busRead[0x10000];
 ECL_EXPORT const uint8_t *ReadBus(int32_t bus, int64_t addr, int32_t len)
 {
-	NesMemoryManager *m = bus_memory();
+	NesConsole *nes = bus_console();
 	if (len > (int32_t)sizeof g_busRead)
 		len = (int32_t)sizeof g_busRead;
+	int ok = nes != NULL && bus >= 0 && bus < BUS_COUNT;
 	for (int32_t i = 0; i < len; i++) {
 		int64_t a = addr + i;
-		g_busRead[i] = (bus == 0 && m != NULL && a >= 0 && a <= 0xFFFF) ? m->DebugRead((uint16_t)a) : 0;
+		g_busRead[i] = (ok && a >= 0 && a < kBusSizes[bus]) ? bus_read(nes, bus, (uint16_t)a) : 0;
 	}
 	return g_busRead;
 }
