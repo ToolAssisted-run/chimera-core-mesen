@@ -46,6 +46,10 @@ CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 46 ok, 0 failed
 python3 <chimera>/tools/check-core-texts.py .            # every key named
 ```
 
+`MESEN_FAMISTUDIO_ROMS=<folder of EPSM songs FamiStudio exported to .nes>`
+adds the FamiStudio checks to `run-gate.sh` and `run-frontend.sh`; without
+it they say SKIP. Nothing of FamiStudio is in this repository yet.
+
 The test scripts build nothing: rebuild both flavors first, or they compare
 stale binaries (it happened here once: the sandbox was one build behind).
 

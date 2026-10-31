@@ -473,6 +473,80 @@ light_leg() { # name settings xkey ykey
 light_leg zapper-light '{"port2":"zapper"}' x y
 light_leg famicomZapper-light '{"expansion":"famicomZapper"}' X Y
 
+# ---------------------------------------------------------------- FamiStudio's EPSM songs
+# EPSM music made by a tool other than ours: songs exported to .nes by
+# FamiStudio (MIT; its sound engine drives the EPSM). The folder is given by
+# MESEN_FAMISTUDIO_ROMS and every .nes in it is run; nothing here needs it,
+# and without it the checks say SKIP. For each cartridge, 1800 frames
+# (30 seconds) with the pad exercise:
+#   - native == sandbox (picture, sound, lag, every memory domain), and a
+#     save and a load around every frame change nothing;
+#   - a state saved at frame 900 by one process and loaded by another ends
+#     on the straight run's machine;
+#   - the EPSM plays: the same cartridge with the EPSM taken out of its
+#     header (console type 0, no extended type) sounds different, and the
+#     difference - what the EPSM played - is loud (RMS 300 or more).
+fsdir="${MESEN_FAMISTUDIO_ROMS:-}"
+fsroms=()
+if [ -n "$fsdir" ] && [ -d "$fsdir" ]; then
+	for f in "$fsdir"/*.nes; do [ -f "$f" ] && fsroms+=("$f"); done
+fi
+if [ "${#fsroms[@]}" = 0 ]; then
+	report "famistudio:*" SKIP "3 checks a cartridge: need MESEN_FAMISTUDIO_ROMS, a folder of .nes files FamiStudio exported (not in this repository)"
+else
+	i=0
+	for f in "${fsroms[@]}"; do
+		i=$((i + 1))
+		tag="fs$i"
+		label="famistudio:$(basename "$f" .nes)"
+		wd="$work/$tag" && rm -rf "$wd" && mkdir -p "$wd" && cp "$f" "$wd/song.nes" && printf '{"rom":["song.nes"]}' > "$wd/slots"
+		fargs=(--frames 1800 --exercise)
+		"$rn" "$wd" "${fargs[@]}" --audio-out "$work/$tag.nat.audio" 2>"$work/$tag.nat.err" | digests > "$work/$tag.nat"
+		rw "$wd" "${fargs[@]}" 2>/dev/null > "$work/$tag.raw"
+		digests < "$work/$tag.raw" > "$work/$tag.box"
+		rw "$wd" "${fargs[@]}" --rerecord 2>/dev/null | digests > "$work/$tag.rr"
+		if [ "$(sed -n 's/^frames=//p' "$work/$tag.box")" != 1800 ]; then
+			report "$label:equivalence" FAIL "the sandbox did not run 1800 frames: $(grep -v '^\[mesen\]' "$work/$tag.nat.err" | head -1)"
+		elif ! cmp -s "$work/$tag.nat" "$work/$tag.box"; then
+			report "$label:equivalence" FAIL "native and sandbox differ: $(diff "$work/$tag.nat" "$work/$tag.box" | short)"
+		elif ! cmp -s "$work/$tag.box" "$work/$tag.rr"; then
+			report "$label:equivalence" FAIL "a save and a load around each frame changed the machine"
+		else
+			report "$label:equivalence" PASS "1800 frames, native == sandbox == saved and loaded each frame (picture, sound, lag, every domain)"
+		fi
+
+		finalDigests < "$work/$tag.raw" > "$work/$tag.straight"
+		rw "$wd" "${fargs[@]}" --save-at 900 "$work/$tag.state" > "$work/$tag.save" 2>/dev/null
+		rw "$wd" "${fargs[@]}" --load-at 900 "$work/$tag.state" 2>/dev/null | finalDigests > "$work/$tag.loaded"
+		if ! grep -q '^savedAt=900' "$work/$tag.save"; then
+			report "$label:session" FAIL "no state was saved at frame 900"
+		elif [ -s "$work/$tag.loaded" ] && cmp -s "$work/$tag.straight" "$work/$tag.loaded"; then
+			report "$label:session" PASS "saved at 900 by one process, loaded by another: the same machine at frame 1800"
+		else
+			report "$label:session" FAIL "$(diff "$work/$tag.straight" "$work/$tag.loaded" | short)"
+		fi
+
+		wdn="$work/$tag.noepsm" && rm -rf "$wdn" && mkdir -p "$wdn" && printf '{"rom":["song.nes"]}' > "$wdn/slots"
+		python3 -I - "$f" "$wdn/song.nes" <<'PYHDR'
+import sys
+d = bytearray(open(sys.argv[1], "rb").read())
+d[7] &= 0xFC   # console type 0: a plain NES
+d[13] &= 0xF0  # no extended console type
+open(sys.argv[2], "wb").write(d)
+PYHDR
+		"$rn" "$wdn" "${fargs[@]}" --audio-out "$work/$tag.noepsm.audio" > /dev/null 2>"$work/$tag.noepsm.err"
+		snd="$(python3 -I "$here/tests/audio-diff.py" "$work/$tag.nat.audio" "$work/$tag.noepsm.audio")"
+		diffrms="${snd##*difference=}"
+		if ! grep -q 'EPSM present' "$work/$tag.nat.err" || ! grep -q 'EPSM absent' "$work/$tag.noepsm.err"; then
+			report "$label:epsm" FAIL "the header did not plug the EPSM in, or taking it out did not unplug it"
+		elif [ "${diffrms%.*}" -ge 300 ]; then
+			report "$label:epsm" PASS "the EPSM plays: $snd (with the EPSM, without, and what it added)"
+		else
+			report "$label:epsm" FAIL "the EPSM added nothing loud: $snd"
+		fi
+	done
+fi
+
 # ---------------------------------------------------------------- the build
 # No network code in the guest (patches/0006, user-decided 2026-10-31).
 if nn="$("$here/tests/check-no-network.sh" "$gst/core.wbx" 2>&1)"; then
@@ -623,8 +697,59 @@ PYMOV
 	else
 		report "engine:devices" FAIL "$devfail"
 	fi
+
+	# FamiStudio's EPSM songs through Chimera (only with MESEN_FAMISTUDIO_ROMS):
+	# a 900-frame schedule (P1 Right, Left, A and B held now and then, which
+	# FamiStudio's player reads) written as a Chimera movie, made into a
+	# project by one chimera-run and replayed by another, ends on the native
+	# reference's RAM, and the core's log says the EPSM is there. It says for
+	# how many of them the buttons changed the RAM at all (FamiStudio's player
+	# with one song, or none, may not notice them).
+	if [ "${#fsroms[@]}" -gt 0 ]; then
+		python3 -I - "$work/fs.inputs" "$work/fs.movie.txt" <<'PYFS'
+import sys
+inp, mov = [], []
+for f in range(900):
+    held = ""
+    for start, b in ((120, "R"), (300, "A"), (480, "L"), (660, "B"), (780, "R")):
+        if start <= f < start + 6:
+            held = b
+    inp.append("|..|" + "".join(c if c == held else "." for c in "UDLRSsBA") + "|")
+    mov.append("|..|" + "".join(c if c == held else "." for c in "ABsSUDLR") + "|")
+open(sys.argv[1], "w").write("\n".join(inp) + "\n")
+open(sys.argv[2], "w").write("\n".join(mov) + "\n")
+PYFS
+		fsfail=""
+		fsshaped=0
+		i=0
+		for f in "${fsroms[@]}"; do
+			i=$((i + 1))
+			tag="fs$i"
+			"$rn" "$work/$tag" --frames 900 --inputs "$work/fs.inputs" --dump-domain RAM "$work/$tag.mv.native.ram" > /dev/null 2>&1
+			"$rn" "$work/$tag" --frames 900 --dump-domain RAM "$work/$tag.mv.idle.ram" > /dev/null 2>&1
+			cmp -s "$work/$tag.mv.native.ram" "$work/$tag.mv.idle.ram" || fsshaped=$((fsshaped + 1))
+			"$runner" --new-project "$work/$tag.chimeraProject" "$package" "$f" "$work/fs.movie.txt" > "$work/$tag.mv.make.log" 2>&1
+			"$runner" --project "$work/$tag.chimeraProject" "$package" --files "$(dirname "$f")" \
+				--dump "RAM=$work/$tag.mv.engine.ram" --meta "$work/$tag.mv.meta" > "$work/$tag.mv.log" 2>&1
+			n=$(sed -n 's/^frames=//p' "$work/$tag.mv.meta" 2> /dev/null)
+			if [ "${n:-0}" != 900 ]; then
+				fsfail="$fsfail $(basename "$f"): ${n:-no} frames ($(tail -1 "$work/$tag.mv.log"));"
+			elif ! grep -q 'EPSM present' "$work/$tag.mv.log"; then
+				fsfail="$fsfail $(basename "$f"): the log does not say the EPSM is there;"
+			elif ! cmp -s "$work/$tag.mv.native.ram" "$work/$tag.mv.engine.ram"; then
+				fsfail="$fsfail $(basename "$f"): another RAM than native;"
+			fi
+		done
+		if [ -z "$fsfail" ]; then
+			report "engine:famistudio" PASS "${#fsroms[@]} FamiStudio cartridges: a 900-frame movie replayed by chimera-run in a new process ends on the native reference's RAM, with the EPSM; the movie's buttons changed the RAM of $fsshaped of them"
+		else
+			report "engine:famistudio" FAIL "$fsfail"
+		fi
+	else
+		report "engine:famistudio" SKIP "needs MESEN_FAMISTUDIO_ROMS (FamiStudio's exported songs, not in this repository)"
+	fi
 else
-	report "engine:*" SKIP "5 checks: need CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
+	report "engine:*" SKIP "6 checks: need CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
 fi
 
 echo ""

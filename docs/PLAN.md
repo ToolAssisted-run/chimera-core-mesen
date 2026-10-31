@@ -585,6 +585,74 @@ two-player mode of the adapter, the Family BASIC keyboard and the other
 expansion devices Mesen has (Oeka Kids tablet, Family Trainer mat, Hyper
 Shot, Party Tap and more).
 
+## 2026-10-31: EPSM songs made with FamiStudio
+
+The owner gave FamiStudio 4.5.3 (MIT, by BleuBleu): its Linux build, and
+from its repository the EPSM cartridge shells (`rom_epsm_ntsc.nes`,
+`rom_epsm_pal.nes`), two EPSM test songs (`TestEPSM.fms`,
+`TestMultiEPSM.fms`) and an EPSM instrument set. FamiStudio exports a song
+to a playable .nes cartridge: its sound engine and player in the shell,
+the song's data added. That would be EPSM music made by a tool other than
+ours, and, all of it being MIT, could go into `tests/` with FamiStudio's
+licence beside it.
+
+**The songs were not exported.** Running FamiStudio's program (with the
+.NET runtime) on this machine was refused by this session's permission
+system, as code from outside the repository; it was not tried another way.
+So no FamiStudio song has been run, and nothing of FamiStudio is in this
+repository. The command, from the program's own help text (not run):
+`dotnet FamiStudio.dll TestEPSM.fms rom-export TestEPSM.nes
+-rom-export-mode:ntsc` (or `pal`).
+
+What was run instead, from copies in a scratch folder: the two shells as
+they are. Each is an NES 2.0 cartridge (mapper 5, 32 KiB of program,
+8 KiB of CHR) with the EPSM in its header; its program holds FamiStudio's
+EPSM driver (stores to $401C-$401F) and its song area is empty. Mesen
+plugs the EPSM in, and the player draws FamiStudio's screen. It plays about
+six seconds of sound and then nothing, but that sound is the console's own:
+the same shell with the EPSM taken out of its header sounds the same (RMS
+474.2 both ways over 10 seconds with nothing pressed; over the check's 30
+seconds the difference between the two has an RMS of 0.3 for the NTSC
+shell and 2.5 for the PAL one, against 274.9 and 236.0 for the sound). With no song the player also ignores the pad
+(the RAM after 900 frames with buttons held is the idle run's). The shells
+are FamiStudio's code running in the sandbox, not EPSM music.
+
+The tests for the exported songs are ready and take the folder from
+`MESEN_FAMISTUDIO_ROMS` (SKIP without it); `docs/BUILDING.md` has the
+commands. For each .nes in it:
+
+- `famistudio:<name>:equivalence`: 1800 frames (30 seconds) of the pad
+  exercise, native == sandbox (picture, sound, lag, every memory domain),
+  and a save and a load around every frame change nothing;
+- `famistudio:<name>:session`: a state saved at frame 900 by one process
+  and loaded by another ends on the straight run's machine;
+- `famistudio:<name>:epsm`: the EPSM plays: the sound minus the sound of
+  the same cartridge with the EPSM taken out of its header has an RMS of
+  300 or more (`waterbox/tests/audio-diff.py`);
+- `engine:famistudio` (with `CHIMERA_ROOT`): a 900-frame movie made into a
+  project by one chimera-run and replayed by another ends on the native
+  reference's RAM, with the EPSM; it says for how many cartridges the
+  movie's buttons changed the RAM at all;
+- `famistudio:frontend` (`run-frontend.sh`): each cartridge in Chimera's
+  window ends on the native reference's RAM after 300 frames, with the EPSM.
+
+Run on the two shells as the folder: equivalence and session pass for both,
+`engine:famistudio` and `famistudio:frontend` pass (the buttons changed the
+RAM of 0 of them), and `epsm` FAILS for both ("the EPSM added nothing
+loud"), which is right: the shells play no EPSM note. That is how the
+`epsm` check was seen to fail. The others were seen to fail with a guest
+broken on purpose (a RAM byte bumped every frame, the native reference
+left alone): both `equivalence` checks, `engine:famistudio` and
+`famistudio:frontend` failed; `session` passed, as it should, since it
+compares the sandbox with itself.
+
+Before an exported cartridge goes into `tests/`: compare it with the shell
+it was made from, byte for byte, and check that every byte that differs is
+in the song area and the title text (the song's data and names, MIT), so
+that the rest is FamiStudio's code only; then put FamiStudio's `LICENSE`
+beside it (`tests/roms/famistudio-LICENSE`) and credit it in
+`tests/roms/README.md`. Not done: there is no exported cartridge yet.
+
 ## Where this stands (2026-10-31, second round)
 
 Works, and is tested here on Linux against Chimera main cb46d2b7

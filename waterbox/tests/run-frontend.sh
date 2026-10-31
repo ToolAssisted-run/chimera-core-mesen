@@ -17,6 +17,9 @@
 #   epsm:frontend      the EPSM test cartridge with the drums on and a
 #                      made-up rhythm ROM chosen in the window: RAM == native,
 #                      and the core's log says the EPSM and the ROM are there
+#   famistudio:frontend  only with MESEN_FAMISTUDIO_ROMS (a folder of EPSM
+#                      songs FamiStudio exported to .nes): each one in the
+#                      window == native, with the EPSM; SKIP without it
 #   keybinds           the package's default keys are the machine's
 #
 # Usage: ./run-frontend.sh --chimera-root <a built Chimera checkout>
@@ -71,7 +74,7 @@ unset DISPLAY WAYLAND_DISPLAY
 
 ok=0
 failed=0
-report() { printf "%-22s %-6s %s\n" "$1" "$2" "$3"; case "$2" in PASS) ok=$((ok+1)) ;; *) failed=$((failed+1)) ;; esac; }
+report() { printf "%-22s %-6s %s\n" "$1" "$2" "$3"; case "$2" in PASS) ok=$((ok+1)) ;; SKIP) ;; *) failed=$((failed+1)) ;; esac; }
 printf "%-22s %-6s %s\n" "Check" "Result" "Detail"
 printf "%-22s %-6s %s\n" "-----" "------" "------"
 
@@ -205,6 +208,42 @@ elif ! grep -q 'EPSM rhythm ROM loaded' "$work/epsm.log"; then
 	report "epsm:frontend" FAIL "the rhythm ROM chosen in the window did not reach Mesen"
 else
 	report "epsm:frontend" PASS "the EPSM cartridge in the window: RAM == native, the EPSM and its rhythm ROM are there"
+fi
+
+# --- FamiStudio's EPSM songs in the window (only with MESEN_FAMISTUDIO_ROMS,
+# a folder of .nes files FamiStudio exported; not in this repository): each
+# cartridge, in a project opened in the window, runs the frames with
+# nothing pressed and ends on the native reference's RAM, with the EPSM ---
+fsdir="${MESEN_FAMISTUDIO_ROMS:-}"
+fsn=0
+fsfail=""
+if [ -n "$fsdir" ] && [ -d "$fsdir" ]; then
+	for f in "$fsdir"/*.nes; do
+		[ -f "$f" ] || continue
+		fsn=$((fsn + 1))
+		dir="$work/project.fs$fsn"
+		rm -rf "$dir" && mkdir -p "$dir" && cp "$f" "$dir/song.nes"
+		"$crun" --new-project "$dir/fs$fsn.chimeraProject" "$package" "$dir/song.nes" > "$dir/make.log" 2>&1
+		wd="$work/native.fs$fsn"
+		rm -rf "$wd" && mkdir -p "$wd" && cp "$f" "$wd/song.nes" && printf '{"rom":["song.nes"]}' > "$wd/slots"
+		"$rn" "$wd" --frames "$frames" --dump-domain RAM "$work/native.fs$fsn.ram.bin" > "$work/native.fs$fsn.txt" 2>&1
+		if [ ! -f "$dir/fs$fsn.chimeraProject" ]; then
+			fsfail="$fsfail $(basename "$f"): no project made;"
+		elif ! run_window "fs$fsn" "$dir/fs$fsn.chimeraProject" "$work/window.json" "$frames"; then
+			fsfail="$fsfail $(basename "$f"): the window did not report OK (see tests/work/fs$fsn.log);"
+		elif ! grep -q 'EPSM present' "$work/fs$fsn.log"; then
+			fsfail="$fsfail $(basename "$f"): the window's log does not say the EPSM is there;"
+		elif ! cmp -s "$work/native.fs$fsn.ram.bin" "$work/fs$fsn.ram.bin"; then
+			fsfail="$fsfail $(basename "$f"): RAM differs from the native reference;"
+		fi
+	done
+fi
+if [ "$fsn" = 0 ]; then
+	report "famistudio:frontend" SKIP "needs MESEN_FAMISTUDIO_ROMS (FamiStudio's exported songs, not in this repository)"
+elif [ -z "$fsfail" ]; then
+	report "famistudio:frontend" PASS "$fsn FamiStudio cartridges in the window: RAM == native after $frames frames, the EPSM there"
+else
+	report "famistudio:frontend" FAIL "$fsfail"
 fi
 
 # --- the bindings the package ships are the machine's when nobody changed them ---

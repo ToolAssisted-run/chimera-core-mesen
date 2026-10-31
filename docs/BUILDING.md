@@ -109,8 +109,9 @@ differ.
 ```
 
 It needs `run-native`, `run-wbx` and `core.wbx` built, and builds nothing.
-It ends with `<n> ok, <m> failed`; without Chimera it is 40 checks and two
-lines saying the checks that need Chimera were skipped. With
+It ends with `<n> ok, <m> failed`; without Chimera it is 40 checks, a line
+saying the checks that need Chimera were skipped, and one saying the
+FamiStudio checks were skipped (below). With
 
 ```
 CHIMERA_ROOT=<chimera> MESEN_PACKAGE=<the package> ./waterbox/run-gate.sh
@@ -118,6 +119,26 @@ CHIMERA_ROOT=<chimera> MESEN_PACKAGE=<the package> ./waterbox/run-gate.sh
 
 six more run: Chimera's own checks of the texts, and five through
 `<chimera>/build/dll/chimera-run`: 46 checks.
+
+### EPSM songs made with FamiStudio (optional)
+
+FamiStudio (https://famistudio.org, MIT) exports a song to a playable
+.nes cartridge whose sound engine drives the EPSM. Such cartridges are EPSM
+music made by a tool other than this repository's. None is in this
+repository. Export some (FamiStudio's command line, from its help:
+`FamiStudio <song.fms> rom-export <out.nes> -rom-export-mode:ntsc`, or
+`pal`), put them in a folder, and name it:
+
+```
+MESEN_FAMISTUDIO_ROMS=<folder> CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh
+MESEN_FAMISTUDIO_ROMS=<folder> ./waterbox/tests/run-frontend.sh --chimera-root <chimera>
+```
+
+For each cartridge the core test script adds three checks (native ==
+sandbox with saves and loads, a state across processes, and the EPSM's own
+share of the sound), and one more through chimera-run for them all (a
+movie replayed in a new process); the frontend test adds one (each in
+Chimera's window). Without the folder they say SKIP.
 `docs/PLAN.md` says what each check compares and how each was seen to
 fail.
 
@@ -136,7 +157,7 @@ python3 <chimera>/tools/check-core-texts.py .
 
 It runs Chimera's window headless (no display) on projects it makes with
 `chimera-run --new-project`, and compares the console's RAM with the native
-reference's: 6 checks. Its files stay in `waterbox/tests/work/` (ignored by
+reference's: 6 checks, and a seventh with `MESEN_FAMISTUDIO_ROMS`. Its files stay in `waterbox/tests/work/` (ignored by
 git). `--qt-lib` is for a window built against a Qt the system does not
 know of, such as `~/qt/6.12.0/gcc_64/lib` after `tools/ci-chimera.sh`.
 
