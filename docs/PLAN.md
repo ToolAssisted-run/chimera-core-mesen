@@ -1013,6 +1013,8 @@ pass:
 | 2 | Game Boy (GB), Game Boy Color (GBC) | this repository's test program |
 | 3 | Game Boy Advance (GBA) | none (Mesen needs the BIOS) |
 | 4 | Master System (SMS), Game Gear (GG), SG-1000 (SG), ColecoVision (CV) | test programs (the ColecoVision needs its BIOS) |
+
+(Steps 3 and 4 were done and committed together.)
 | 5 | PC Engine (PCE), SuperGrafx (SGX), PC Engine CD (PCECD) | test program (the CD needs its BIOS) |
 | 6 | WonderSwan (WS), WonderSwan Color (WSC) | test program |
 
@@ -1245,6 +1247,100 @@ The picture check of the owner's games now fails only a picture of one
 colour (a blank screen): Pokemon Gold's 1800th frame is Professor Oak on a
 white background, two colours, in play.
 
+## 2026-10-31: the Game Boy Advance, Sega's 8-bit consoles and the ColecoVision (sixth round, steps 3 and 4)
+
+### The Game Boy Advance
+
+- Machine `GBA` ("Game Boy Advance"), "Game Boy Advance Controls" (the Game
+  Boy's buttons, then L and R), shown at 240x160.
+- Mesen runs no Game Boy Advance game without the console's BIOS
+  (gba_bios.bin, 16 KiB): it is required firmware, pinned to the owner's
+  file, and the core refuses the load without it, naming the file
+  (`error.no_gba_bios`). So nothing of the Game Boy Advance can run on CI;
+  the free check is that refusal (`gba:bios-required`, on any file).
+- Mesen's colour correction for the Game Boy Advance's screen is off (see
+  the traps: its pow() differs in the last bit between the two flavors).
+- Measured: six of the owner's games, 1800 frames of the pad exercise each,
+  native == sandbox == saved and loaded each frame, another machine than
+  the idle run: tollrunner_jam (a homebrew), Another World, Mega Man Battle
+  Network, Rhythm Tengoku and Yu-Gi-Oh! Worldwide Edition (16 MiB each, the
+  largest a Game Boy Advance cartridge is: they fit the sandbox's memory as
+  it is), WarioWare. `engine:gba` (Mega Man Battle Network's movie through
+  chimera-run), `gba:game-frontend` in the window.
+- Not done: no test program of our own (Mesen needs the BIOS, and the BIOS
+  checks Nintendo's logo, which this repository does not hold); so each
+  button on its own is not checked on the Game Boy Advance, only that the
+  pad exercise reaches the games. Multiboot images (.mb) are not offered.
+
+### The Master System, Game Gear, SG-1000 and ColecoVision
+
+Mesen runs the four as one console with four models, picked by the
+game file's extension (.sms, .gg, .sg, .col); the core gives Mesen the file
+under the machine's extension when its own is another (a ColecoVision game
+named .bin), and reloads it itself at a power cycle.
+
+- Machines `SMS`, `GG`, `SG` and `CV`. Controllers: the Master System's two
+  pads (Up Down Left Right, Button 1, Button 2; gpgx's letters) with Power,
+  Reset and Pause; the Game Gear's one, with Start; the SG-1000's two pads
+  and Power (Mesen does not emulate its Hold button: its pause interrupt is
+  the Master System's only, `SmsVdp.cpp`); the ColecoVision's two
+  controllers (the joystick, the two side buttons, and the keypad's twelve
+  keys) with Power and Reset.
+- Settings: Region (`smsRegion`: auto, NTSC, PAL) for the Master System,
+  SG-1000 and ColecoVision; Controller Port 2 (`smsPort2`) for the Master
+  System and SG-1000; FM Sound Unit (`smsFm`, the Japanese Master System's
+  YM2413, on as Mesen has it) for the Master System; Master System BIOS
+  (`smsBios`: off, as Mesen has it, or the American 1.3 or Japanese 2.1
+  BIOS, each pinned to the owner's file - both are the firmware `bios.sms`,
+  two entries with disjoint conditions); Memory at Power On (random for the
+  three Sega consoles, zeros for the ColecoVision, as Mesen's UI has them).
+- The ColecoVision's BIOS (bios.col) is required (Mesen runs nothing
+  without it): pinned, refused without it (`error.no_coleco_bios`).
+- The pictures with Mesen's UI's overscan: the Master System's 256x192 of
+  its 256x240, the Game Gear's 160x144.
+
+The test programs, `tests/sms-test/make-sms-test.py` (our own Z80
+program, four cartridges: `sms-test.sms`, `gg-test.gg`, `sg-test.sg`,
+`cv-test.col`): the video chip set up with the display on and the backdrop
+only, the sound chip's first tone channel at full volume; each frame the
+controller ports read into RAM (the Game Gear's Start too; the
+ColecoVision's controllers in joystick mode and in keypad mode), frames
+counted, the Master System's Pause interrupts counted; the backdrop is
+player 1's byte and the tone's frequency follows it. The ColecoVision's
+starts only through the BIOS (its header says to skip the title).
+
+Checks: `sms:*`, `gg:*`, `sg1000:*` (all seven program checks; CI runs
+them), `coleco:*` (the same, with the owner's BIOS; SKIP without it),
+`sms:pause` (Pause on two frames, two interrupts), `engine:sms`,
+`engine:gg`, `engine:sg1000`, `engine:sms-polls`, `engine:coleco`; in the
+window `sms:frontend`, `gg:frontend`, `sg1000:frontend`,
+`coleco:frontend`, `sms:keybinds`, `coleco:keybinds`. The owner's games:
+Mai Nurse and Galactic Protector on the Master System (and each with a
+BIOS: the American with Mai Nurse, the Japanese with Galactic Protector),
+Prince of Persia (the Master System cartridge in the owner's Game Gear
+folder, run as a Master System game, 2400 frames: its frame 1800 is black
+between two scenes), Frogger (a prototype) and Nazo Puyo on the Game Gear,
+Pitman, Monaco GP and Foryster on the SG-1000, Carnival and Oil's Well on
+the ColecoVision. For the ColecoVision the pad exercise's Start is the
+keypad's 1, which chooses a game on the cartridges' first screen.
+`coleco:power-renamed`: Power on Oil's Well (a .bin, given to Mesen as
+.col) starts the game again.
+
+Not tried, or not offered: "Venture (1982) (Coleco).int" from the owner's
+ColecoVision folder is an Intellivision game (the BIOS answers "turn game
+off before inserting cartridge"), which Mesen does not emulate; the Game
+Gear's BIOS (bios.gg, not among the owner's files) is not offered; the
+Master System's Light Phaser is not offered; Reset was not checked on its
+own.
+
+Seen to fail, with the adapter broken on purpose in five places and
+rebuilt: the Master System's buttons 1 and 2 swapped and Pause on another
+bit (`sms:input`, `sms:buttons`, `sms:pause`, `engine:sms`), the
+ColecoVision's keys 5 and 6 swapped (`coleco:buttons`), the Game Gear's
+Start not wired (`gg:buttons`), the Game Boy Advance's BIOS check removed
+(`gba:bios-required`), Mesen's own power cycle used for a game given from
+memory (`coleco:power-renamed`: "Power changed nothing").
+
 ## Where this stands (2026-10-31, sixth round)
 
 Works, and is tested here on Linux against Chimera main cb46d2b7
@@ -1258,17 +1354,21 @@ Works, and is tested here on Linux against Chimera main cb46d2b7
   chips' programs as each game's firmware, Clock Start for the SPC7110's
   clock and the Satellaview's date) and the **Super Game Boy** (Super Game
   Boy and Super Game Boy 2, Mesen's or Nintendo's boot ROM), the **Game
-  Boy** and the **Game Boy Color** (Mesen's or Nintendo's boot ROM).
-- Commands and counts: `run-gate.sh` 69 ok with neither Chimera nor the
-  owner's files, 81 ok with Chimera, 118 ok with Chimera, MESEN_CONTENT_DIR,
-  MESEN_SYSTEMS_CONTENT and MESEN_PUBLISHED_PACKAGE; `run-frontend.sh` 11 ok
-  without the owner's files, 17 ok with them; `test-packages` PASS (0
-  failed); `check-core-texts.py` 113 keys; `check-names.py` 0 in 26 tables;
+  Boy** and the **Game Boy Color** (Mesen's or Nintendo's boot ROM), the
+  **Game Boy Advance** (with the owner's BIOS only), the **Master System**,
+  the **Game Gear**, the **SG-1000** and the **ColecoVision** (with the
+  owner's BIOS only).
+- Commands and counts: `run-gate.sh` 92 ok with neither Chimera nor the
+  owner's files, 108 ok with Chimera, 173 ok with Chimera, MESEN_CONTENT_DIR,
+  MESEN_SYSTEMS_CONTENT and MESEN_PUBLISHED_PACKAGE; `run-frontend.sh` 15 ok
+  without the owner's files, 24 ok with them; `test-packages` PASS (0
+  failed); `check-core-texts.py` 136 keys; `check-names.py` 0 in 26 tables;
   Chimera's `check-proper-nouns.py` 0.
 
 Not done, or not proved:
 
-- The other systems (steps 3 to 6 above): not offered yet.
+- The PC Engine machines and the WonderSwan (steps 5 and 6 above): not
+  offered yet.
 - Patch 0009 (the cartridges' clocks on the machine's time) is in the
   build, but no game here reads such a clock in a way a check could see
   (see step 2).

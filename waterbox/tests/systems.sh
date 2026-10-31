@@ -53,7 +53,14 @@ sysdir() { # tag file settings [src=id]...
 sys_program_legs() { # tag machine rom settings players frames domain [src=id]...
 	local tag="$1" machine="$2" rom="$3" settings="$4" players="$5" frames="$6" domain="$7" colframes="${COLFRAMES:-240}"
 	shift 7
-	local wd wire inputs
+	local wd wire inputs need
+	for need in "$@"; do
+		need="${need%%=*}"
+		if [ -z "$scontent" ] || [ ! -f "$scontent/firmware/$need" ]; then
+			report "$tag:*" SKIP "8 checks: need $need in MESEN_SYSTEMS_CONTENT/firmware"
+			return
+		fi
+	done
 	wd="$(sysdir "$tag" "$rom" "$settings" "$@")"
 	wire="$(python3 -I "$sys_py" wire "$machine")"
 	inputs="$work/$tag.inputs"
@@ -278,6 +285,45 @@ systems_core() {
 	sys_game_leg gbc:game:slime gbc "$gbcg/aslimetravel.gbc" '{"machine":"gbc"}' 1800
 	sys_game_leg gbc:game:smbdx-nintendo-boot gbc "$gbcg/Super Mario Bros. Deluxe (USA, Europe) (Rev A).gbc" '{"machine":"gbc","bootRom":"nintendo"}' 1800 GBC_cgb.bin=cgb_boot.bin
 
+	# ------------------------------------------------------------ the Game Boy Advance
+	# Mesen runs no Game Boy Advance game without the console's BIOS, so the
+	# free checks are the refusal; the owner's games do the rest.
+	local wn
+	wn="$(sysdir gba-nobios "$root/tests/roms/gb-test.gb" '{"machine":"gba"}')"
+	if rw "$wn" --frames 10 > /dev/null 2> "$work/gba-nobios.err" || ! grep -q "error.no_gba_bios" "$work/gba-nobios.err"; then
+		report "gba:bios-required" FAIL "without gba_bios.bin the game was not refused: $(grep -v '^\[mesen\]' "$work/gba-nobios.err" | head -1)"
+	else
+		report "gba:bios-required" PASS "without the BIOS (gba_bios.bin) a game is refused, and the error names the file"
+	fi
+	local gbag="$scontent/systems/gba" gbab=GBA_bios.rom=gba_bios.bin
+	sys_game_leg gba:game:tollrunner gba "$gbag/tollrunner_jam.gba" '{"machine":"gba"}' 1800 $gbab
+	sys_game_leg gba:game:anotherworld gba "$gbag/Another_world.gba" '{"machine":"gba"}' 1800 $gbab
+	sys_game_leg gba:game:mmbn gba "$gbag/Megaman Battle Network (U) [!].gba" '{"machine":"gba"}' 1800 $gbab
+	sys_game_leg gba:game:rhythmtengoku gba "$gbag/Rhythm Tengoku (J) (V1.0).gba" '{"machine":"gba"}' 1800 $gbab
+	sys_game_leg gba:game:warioware gba "$gbag/WarioWare Inc. (U).gba" '{"machine":"gba"}' 1800 $gbab
+	sys_game_leg gba:game:yugioh gba "$gbag/Yu-Gi-Oh! - Worldwide Edition - Stairway to the Destined Duel (U) (M6) [!].gba" '{"machine":"gba"}' 1800 $gbab
+
+	# ------------------------------------------------------------ Sega's 8-bit consoles and the ColecoVision
+	sys_program_legs sms sms "$root/tests/roms/sms-test.sms" '{"machine":"sms"}' 2 480 "Work RAM"
+	sys_program_legs gg gg "$root/tests/roms/gg-test.gg" '{"machine":"gg"}' 1 480 "Work RAM"
+	sys_program_legs sg1000 sg1000 "$root/tests/roms/sg-test.sg" '{"machine":"sg1000"}' 2 480 "Work RAM"
+	sys_program_legs coleco coleco "$root/tests/roms/cv-test.col" '{"machine":"coleco"}' 2 480 "Work RAM" Coleco_Bios.bin=bios.col
+	sys_pause_leg sms:pause sms "$root/tests/roms/sms-test.sms" '{"machine":"sms"}'
+	local smsg="$scontent/systems/sms" ggg="$scontent/systems/gamegear" sgg="$scontent/systems/sg1000" cvg="$scontent/systems/coleco"
+	sys_game_leg sms:game:mainurse sms "$smsg/mai_nurse_v1.00.sms" '{"machine":"sms"}' 1800
+	sys_game_leg sms:game:galactic sms "$smsg/Galactic Protector (Japan).sms" '{"machine":"sms"}' 1800
+	sys_game_leg sms:game:pop sms "$ggg/Prince_of_Persia_(UE)_[!].sms" '{"machine":"sms"}' 2400
+	sys_game_leg sms:game:mainurse-bios-usa sms "$smsg/mai_nurse_v1.00.sms" '{"machine":"sms","smsBios":"usa"}' 1800 SMS_us_1.3.sms=bios.sms
+	sys_game_leg sms:game:galactic-bios-japan sms "$smsg/Galactic Protector (Japan).sms" '{"machine":"sms","smsBios":"japan"}' 1800 SMS_jp_2.1.sms=bios.sms
+	sys_game_leg gg:game:frogger gg "$ggg/Frogger (Prototype) [!].gg" '{"machine":"gg"}' 1800
+	sys_game_leg gg:game:puyo gg "$ggg/Nazo Puyo Aruru no Ru (J) [!].gg" '{"machine":"gg"}' 1800
+	sys_game_leg sg1000:game:pitman sg1000 "$sgg/Pitman.sg" '{"machine":"sg1000"}' 1800
+	sys_game_leg sg1000:game:monaco sg1000 "$sgg/Monaco GP (Japan).sg" '{"machine":"sg1000"}' 1800
+	sys_game_leg sg1000:game:foryster sg1000 "$sgg/foryster_sg1000.sg" '{"machine":"sg1000"}' 1800
+	sys_game_leg coleco:game:carnival coleco "$cvg/Carnival (1982) [a1].col" '{"machine":"coleco"}' 1800 Coleco_Bios.bin=bios.col
+	sys_game_leg coleco:game:oilswell coleco "$cvg/Oil's Well (1984)(Sierra On-Line).bin" '{"machine":"coleco"}' 1800 Coleco_Bios.bin=bios.col
+	sys_power_leg coleco:power-renamed coleco "$cvg/Oil's Well (1984)(Sierra On-Line).bin" '{"machine":"coleco"}' Coleco_Bios.bin=bios.col
+
 	local g
 	g="$scontent/systems/snes"
 	sys_game_leg snes:game:smw snes "$g/Super Mario World (U) [!].smc" '{"machine":"snes"}' 1800
@@ -287,6 +333,64 @@ systems_core() {
 	sys_game_leg snes:game:pop snes "$g/Prince of Persia (J).smc" '{"machine":"snes"}' 1800
 	sys_game_leg sgb:game:kirby sgb "$scontent/systems/gb/Kirby's Hoshinoka-Bi (J) (V1.1).gb" '{"machine":"sgb"}' 1800 "SNES_SGB2_(J).sfc=SGB2.sfc"
 	sys_game_leg sgb:game:kirby-sgb1 sgb "$scontent/systems/gb/Kirby's Hoshinoka-Bi (J) (V1.1).gb" '{"machine":"sgb","sgbModel":"sgb1"}' 1800 "SNES_SGB_RevB_(World).sfc=SGB1.sfc"
+}
+
+# The Master System's Pause button is the console's: the test program counts
+# the interrupts it raises (RAM +5). Pressed on two frames, it counts two,
+# native == sandbox. (Mesen does not emulate the SG-1000's Hold button.)
+sys_pause_leg() { # tag machine rom settings
+	local tag="$1" machine="$2" rom="$3" settings="$4" wd wire n
+	wd="$(sysdir "$tag" "$rom" "$settings")"
+	wire="$(python3 -I "$sys_py" wire "$machine")"
+	python3 -I "$sys_py" hold "$machine" 240 "$work/$tag.inputs" 100:1:Pause 160:1:Pause
+	"$rn" "$wd" --frames 240 --inputs "$work/$tag.inputs" --wire "$wire" --dump-domain "Work RAM" "$work/$tag.ram" 2>/dev/null | digests > "$work/$tag.nat"
+	rw "$wd" --frames 240 --inputs "$work/$tag.inputs" --wire "$wire" 2>/dev/null | digests > "$work/$tag.box"
+	n="$(od -An -tu1 -j5 -N1 "$work/$tag.ram" 2>/dev/null | tr -d ' ')"
+	if ! cmp -s "$work/$tag.nat" "$work/$tag.box" || [ ! -s "$work/$tag.box" ]; then
+		report "$tag" FAIL "native and sandbox differ"
+	elif [ "${n:-0}" != 2 ]; then
+		report "$tag" FAIL "Pause pressed on two frames: the program counted ${n:-no} interrupts"
+	else
+		report "$tag" PASS "Pause pressed on two frames: the program counted 2 interrupts; native == sandbox"
+	fi
+}
+
+# Power on a game the core gives Mesen from memory under the machine's name
+# (a ColecoVision game named .bin): Mesen would reload the game by its path,
+# so the core reloads it itself. Power held at frame 600: the run goes on,
+# native == sandbox == saved and loaded each frame, and it is not the run
+# without the power cycle.
+sys_power_leg() { # tag machine file settings [src=id]...
+	local tag="$1" machine="$2" file="$3" settings="$4"
+	shift 4
+	local need
+	for need in "$file" "$@"; do
+		need="${need%%=*}"
+		[ "$need" = "$file" ] || need="$scontent/firmware/$need"
+		if [ -z "$scontent" ] || [ ! -f "$need" ]; then
+			report "$tag" SKIP "needs $(basename "$need") in MESEN_SYSTEMS_CONTENT"
+			return
+		fi
+	done
+	local wd wire
+	wd="$(sysdir "$tag" "$file" "$settings" "$@")"
+	wire="$(python3 -I "$sys_py" wire "$machine")"
+	python3 -I "$sys_py" hold "$machine" 1200 "$work/$tag.inputs" 600:1:Power
+	python3 -I "$sys_py" hold "$machine" 1200 "$work/$tag.nopower.inputs"
+	local args=(--frames 1200 --inputs "$work/$tag.inputs" --wire "$wire")
+	"$rn" "$wd" "${args[@]}" 2>/dev/null | digests > "$work/$tag.nat"
+	rw "$wd" "${args[@]}" 2>"$work/$tag.err" | digests > "$work/$tag.box"
+	rw "$wd" "${args[@]}" --rerecord 2>/dev/null | digests > "$work/$tag.rr"
+	rw "$wd" --frames 1200 --inputs "$work/$tag.nopower.inputs" --wire "$wire" 2>/dev/null | digests > "$work/$tag.nopower"
+	if [ "$(sed -n 's/^frames=//p' "$work/$tag.box")" != 1200 ]; then
+		report "$tag" FAIL "the sandbox did not run 1200 frames: $(grep -v '^\[mesen\]' "$work/$tag.err" | head -1)"
+	elif ! cmp -s "$work/$tag.nat" "$work/$tag.box" || ! cmp -s "$work/$tag.box" "$work/$tag.rr"; then
+		report "$tag" FAIL "native, sandbox and saved-and-loaded runs differ"
+	elif cmp -s "$work/$tag.box" "$work/$tag.nopower"; then
+		report "$tag" FAIL "Power changed nothing"
+	else
+		report "$tag" PASS "Power at frame 600 on a game given under another name: the game starts again; native == sandbox == saved and loaded each frame"
+	fi
 }
 
 # Through Chimera's engine: the test program's schedule written as a Chimera
@@ -359,6 +463,21 @@ systems_engine() {
 	sys_engine_leg engine:gb gb "$root/tests/roms/gb-test.gb" '{"machine":"gb"}' 1 600 WRAM
 	sys_engine_leg engine:gbc gbc "$root/tests/roms/gb-test.gb" '{"machine":"gbc"}' 1 600 WRAM
 	sys_polls_leg engine:gb-polls gb "$root/tests/roms/gb-test.gb" '{"machine":"gb"}' 1 300
+	sys_engine_leg engine:sms sms "$root/tests/roms/sms-test.sms" '{"machine":"sms"}' 2 480 "Work RAM"
+	sys_engine_leg engine:gg gg "$root/tests/roms/gg-test.gg" '{"machine":"gg"}' 1 480 "Work RAM"
+	sys_engine_leg engine:sg1000 sg1000 "$root/tests/roms/sg-test.sg" '{"machine":"sg1000"}' 2 480 "Work RAM"
+	sys_polls_leg engine:sms-polls sms "$root/tests/roms/sms-test.sms" '{"machine":"sms"}' 2 300
+	if [ -n "$scontent" ] && [ -f "$scontent/firmware/Coleco_Bios.bin" ]; then
+		sys_engine_leg engine:coleco coleco "$root/tests/roms/cv-test.col" '{"machine":"coleco"}' 2 480 "Work RAM" Coleco_Bios.bin=bios.col
+	else
+		report "engine:coleco" SKIP "needs Coleco_Bios.bin in MESEN_SYSTEMS_CONTENT/firmware"
+	fi
+	local mmbn="$scontent/systems/gba/Megaman Battle Network (U) [!].gba"
+	if [ -n "$scontent" ] && [ -f "$mmbn" ] && [ -f "$scontent/firmware/GBA_bios.rom" ]; then
+		sys_engine_leg engine:gba gba "$mmbn" '{"machine":"gba"}' 1 900 EWRAM GBA_bios.rom=gba_bios.bin
+	else
+		report "engine:gba" SKIP "needs Megaman Battle Network and GBA_bios.rom in MESEN_SYSTEMS_CONTENT"
+	fi
 	local kirby="$scontent/systems/gb/Kirby's Hoshinoka-Bi (J) (V1.1).gb"
 	if [ -n "$scontent" ] && [ -f "$kirby" ]; then
 		sys_engine_leg engine:sgb sgb "$kirby" '{"machine":"sgb"}' 2 900 "GB WRAM" "SNES_SGB2_(J).sfc=SGB2.sfc"

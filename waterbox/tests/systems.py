@@ -62,7 +62,7 @@ def pad_map(name):
     cols = [b.split(" ", 1)[1] for b in players[0]]
     # the exercise's columns, by what each machine calls them
     want = {"A": ["A", "I", "Button 2", "Right Button"], "B": ["B", "II", "Button 1", "Left Button"],
-            "Select": ["Select"], "Start": ["Start", "Run"],
+            "Select": ["Select"], "Start": ["Start", "Run", "Key 1"],
             "Up": ["Up", "X1"], "Down": ["Down", "X3"], "Left": ["Left", "X4"], "Right": ["Right", "X2"]}
     out = []
     for k in ("A", "B", "Select", "Start", "Up", "Down", "Left", "Right"):
@@ -259,8 +259,40 @@ def check_cv(lines, ram, players):
     return report(problems, seen)
 
 
+def check_pce(name):
+    def check(lines, ram, players):
+        """RAM $10-$14 (the work RAM's): the five pads the program read
+        through the multitap, Up Right Down Left on bits 4-7 and I II Select
+        Run on bits 0-3; a plain pad answers every read as pad 1"""
+        order = {4: "Up", 5: "Right", 6: "Down", 7: "Left", 0: "I", 1: "II", 2: "Select", 3: "Run"}
+        problems, seen = [], []
+        for p in range(1, players + 1):
+            got = {b for bit, b in order.items() if ram[0x10 + p - 1] & (1 << bit)}
+            want = held_cols(name, lines[-1], p)
+            if got != want:
+                problems.append("P%d read %s, not %s" % (p, sorted(got), sorted(want)))
+            seen.append("P%d %s" % (p, "+".join(sorted(got)) or "-"))
+        return report(problems, seen)
+    return check
+
+
+def check_ws(name):
+    def check(lines, ram, players):
+        """RAM $0100 (Y1-Y4 on bits 0-3), $0101 (X1-X4), $0102 (Start on bit
+        1, A on bit 2, B on bit 3); X1-X4 are up, right, down, left"""
+        got = {b for bit, b in enumerate(["Y1", "Y2", "Y3", "Y4"]) if ram[0x100] & (1 << bit)}
+        got |= {b for bit, b in enumerate(["X1", "X2", "X3", "X4"]) if ram[0x101] & (1 << bit)}
+        got |= {b for bit, b in ((1, "Start"), (2, "A"), (3, "B")) if ram[0x102] & (1 << bit)}
+        want = held_cols(name, lines[-1], 1)
+        return report([] if got == want else ["P1 read %s, not %s" % (sorted(got), sorted(want))],
+                      ["P1 " + ("+".join(sorted(got)) or "-")])
+    return check
+
+
 CHECKS = {"snes": check_snes, "sgb": check_snes, "gb": check_gb("gb"), "gbc": check_gb("gbc"),
-          "sms": check_sms("sms"), "gg": check_sms("gg"), "sg1000": check_sms("sg1000"), "coleco": check_cv}
+          "sms": check_sms("sms"), "gg": check_sms("gg"), "sg1000": check_sms("sg1000"), "coleco": check_cv,
+          "pce": check_pce("pce"), "sgx": check_pce("sgx"), "pcecd": check_pce("pcecd"),
+          "ws": check_ws("ws"), "wsc": check_ws("wsc")}
 
 
 def colours(path):

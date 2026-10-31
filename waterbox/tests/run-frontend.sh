@@ -363,16 +363,23 @@ system_window_leg() { # check tag file settings system-id domain hold-names [src
 		report "$check" PASS "$sysid, $frames frames in the window${holdnames:+ with $holdnames held}: $domain == native${holdnames:+, != idle}"
 	fi
 }
-system_keys_leg() { # check tag file settings controller-name
-	local check="$1" tag="$2" file="$3" settings="$4" controller="$5" dir p
+system_keys_leg() { # check tag file settings controller-name [src=id firmware]...
+	local check="$1" tag="$2" file="$3" settings="$4" controller="$5" dir p f src fwargs=() fwmap="{}"
+	shift 5
+	for f in "$@"; do
+		src="$scontent/firmware/${f%%=*}"
+		fwargs+=(--firmware "${f##*=}=$src")
+		fwmap="$(python3 -I -c 'import json, sys; d = json.loads(sys.argv[1]); d[sys.argv[2]] = sys.argv[3]; print(json.dumps(d))' "$fwmap" "${f##*=}" "$src")"
+	done
+	python3 -I "$here/settings-config.py" "$work/window.$tag.json" '{}' "$fwmap"
 	dir="$work/project.$tag"
 	rm -rf "$dir" && mkdir -p "$dir" && cp "$file" "$dir/"
-	"$crun" --new-project "$dir/$tag.chimeraProject" "$package" "$dir/$(basename "$file")" --settings "$settings" > "$dir/make.log" 2>&1
+	"$crun" --new-project "$dir/$tag.chimeraProject" "$package" "$dir/$(basename "$file")" --settings "$settings" "${fwargs[@]}" > "$dir/make.log" 2>&1
 	p="$dir/$tag.chimeraProject"
 	local job="$work/job.$tag.txt"
 	printf 'out=%s\nmeta=%s\n' "$work/$tag.controls.json" "$work/$tag.meta.txt" > "$job"
 	( cd "$work" && MINIHAWK_JOB="$job" timeout -s KILL 900 "$chimera_exe" --headless \
-		"--config=$work/window.json" "--core=$package" "--lua=$here/dump-controls.lua" "--project=$p" ) > "$work/$tag.log" 2>&1
+		"--config=$work/window.$tag.json" "--core=$package" "--lua=$here/dump-controls.lua" "--project=$p" ) > "$work/$tag.log" 2>&1
 	if [ -f "$work/$tag.meta.txt" ] && grep -q "^status=OK" "$work/$tag.meta.txt"; then
 		if python3 -I "$here/check-keybinds.py" "$work/$tag.controls.json" "$wb/default_keybinds.json" "$controller" > "$work/$tag.txt" 2>&1; then
 			report "$check" PASS "$(cat "$work/$tag.txt")"
@@ -406,6 +413,23 @@ if [ -f "$sgames/gbc/Pokemon - Gold Version (UE) [C][!].gbc" ]; then
 	system_window_leg gbc:game-frontend gold "$sgames/gbc/Pokemon - Gold Version (UE) [C][!].gbc" '{"machine":"gbc"}' GBC WRAM ""
 else
 	report "gbc:game-frontend" SKIP "needs Pokemon Gold in MESEN_SYSTEMS_CONTENT"
+fi
+
+system_window_leg sms:frontend sms "$root/tests/roms/sms-test.sms" '{"machine":"sms"}' SMS "Work RAM" "P1 Right,P2 Button 1"
+system_window_leg gg:frontend gg "$root/tests/roms/gg-test.gg" '{"machine":"gg"}' GG "Work RAM" "P1 Up,P1 Start"
+system_window_leg sg1000:frontend sg1000 "$root/tests/roms/sg-test.sg" '{"machine":"sg1000"}' SG "Work RAM" "P1 Button 2,P2 Left"
+system_keys_leg sms:keybinds smskeys "$root/tests/roms/sms-test.sms" '{"machine":"sms"}' "Master System Controller"
+if [ -f "$scontent/firmware/Coleco_Bios.bin" ]; then
+	system_keys_leg coleco:keybinds cvkeys "$root/tests/roms/cv-test.col" '{"machine":"coleco"}' "ColecoVision Controller" "Coleco_Bios.bin=bios.col"
+	system_window_leg coleco:frontend coleco "$root/tests/roms/cv-test.col" '{"machine":"coleco"}' CV "Work RAM" "P1 Key 5,P2 Right Button" "Coleco_Bios.bin=bios.col"
+else
+	report "coleco:frontend" SKIP "needs Coleco_Bios.bin in MESEN_SYSTEMS_CONTENT"
+	report "coleco:keybinds" SKIP "needs Coleco_Bios.bin in MESEN_SYSTEMS_CONTENT"
+fi
+if [ -f "$sgames/gba/Megaman Battle Network (U) [!].gba" ] && [ -f "$scontent/firmware/GBA_bios.rom" ]; then
+	system_window_leg gba:game-frontend mmbn "$sgames/gba/Megaman Battle Network (U) [!].gba" '{"machine":"gba"}' GBA EWRAM "" "GBA_bios.rom=gba_bios.bin"
+else
+	report "gba:game-frontend" SKIP "needs Megaman Battle Network and GBA_bios.rom in MESEN_SYSTEMS_CONTENT"
 fi
 
 # --- the bindings the package ships are the machine's when nobody changed them ---

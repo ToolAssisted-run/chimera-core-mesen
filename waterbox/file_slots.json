@@ -31,7 +31,14 @@
         "bs",
         "st",
         "gb",
-        "gbc"
+        "gbc",
+        "gba",
+        "sms",
+        "gg",
+        "sg",
+        "col",
+        "rom",
+        "bin"
       ],
       "help": "slot.cart.help",
       "exposedWhen": {
@@ -40,7 +47,12 @@
           "snes",
           "sgb",
           "gb",
-          "gbc"
+          "gbc",
+          "gba",
+          "sms",
+          "gg",
+          "sg1000",
+          "coleco"
         ]
       }
     },

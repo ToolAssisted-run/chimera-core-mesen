@@ -211,8 +211,9 @@ static const PadLayout kLayouts[M_COUNT] = {
 	 * controller's Pause bit, which the Game Gear reads as Start) */
 	{ 1, { CON_POWER }, 7, { SmsController::Up, SmsController::Down, SmsController::Left, SmsController::Right,
 		SmsController::B, SmsController::A, SmsController::Pause }, 1 },
-	/* M_SG: Power, Pause (the SG-1000's Hold button) */
-	{ 2, { CON_POWER, SmsController::Pause }, 6, { SmsController::Up, SmsController::Down,
+	/* M_SG: Power (Mesen does not emulate the SG-1000's Hold button: its
+	 * pause interrupt is the Master System's only) */
+	{ 1, { CON_POWER }, 6, { SmsController::Up, SmsController::Down,
 		SmsController::Left, SmsController::Right, SmsController::B, SmsController::A }, 2 },
 	/* M_CV: Power, Reset; Up Down Left Right, the two side buttons, the
 	 * keypad's 1 to 9, 0, * and # */
@@ -704,7 +705,8 @@ static void configure_other(EmuSettings *s)
 	SmsConfig sms = s->GetSmsConfig();
 	g_smsPort2 = setting_choice("smsPort2", snesPorts, 2, 1);
 	sms.Port1.Type = ControllerType::SmsController;
-	sms.Port2.Type = g_smsPort2 ? ControllerType::SmsController : ControllerType::None;
+	/* the Game Gear has one pad, built in */
+	sms.Port2.Type = g_smsPort2 && g_machine != M_GG ? ControllerType::SmsController : ControllerType::None;
 	sms.Region = region3Values[setting_choice("smsRegion", regions3, 3, 0)];
 	sms.GameGearRegion = ConsoleRegion::Auto;
 	sms.RamPowerOnState = ram_state(2);

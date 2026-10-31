@@ -36,3 +36,8 @@ The input schedules in `tests/inputs/` were written for this repository.
   `tests/gb-test/make-gb-test.py`: it keeps the buttons it reads in its RAM,
   shows and sounds them, and notes which console the boot program says it
   runs on. The same file is the Game Boy Color's test.
+- `sms-test.sms`, `gg-test.gg`, `sg-test.sg`, `cv-test.col` - this
+  repository's own Z80 test program for the Master System, Game Gear,
+  SG-1000 and ColecoVision, built by `tests/sms-test/make-sms-test.py`: it
+  keeps what it reads from the controllers in its RAM and shows and sounds
+  player 1's buttons. The ColecoVision's runs only with the console's BIOS.

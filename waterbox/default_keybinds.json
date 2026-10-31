@@ -38,6 +38,64 @@
       "P1 Select": "Space, J1 B9, X1 Back",
       "P1 B": "Z, J1 B1, X1 X",
       "P1 A": "X, J1 B2, X1 A"
+    },
+    "Game Boy Advance Controls": {
+      "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
+      "P1 Down": "Down, J1 POV0D, X1 DpadDown, X1 LStickDown",
+      "P1 Left": "Left, J1 POV0L, X1 DpadLeft, X1 LStickLeft",
+      "P1 Right": "Right, J1 POV0R, X1 DpadRight, X1 LStickRight",
+      "P1 Start": "Enter, J1 B10, X1 Start",
+      "P1 Select": "Space, J1 B9, X1 Back",
+      "P1 B": "Z, J1 B1, X1 X",
+      "P1 A": "X, J1 B2, X1 A",
+      "P1 L": "Q, J1 B5, X1 LeftShoulder",
+      "P1 R": "W, J1 B6, X1 RightShoulder"
+    },
+    "Master System Controller": {
+      "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
+      "P1 Down": "Down, J1 POV0D, X1 DpadDown, X1 LStickDown",
+      "P1 Left": "Left, J1 POV0L, X1 DpadLeft, X1 LStickLeft",
+      "P1 Right": "Right, J1 POV0R, X1 DpadRight, X1 LStickRight",
+      "P1 Button 1": "Z, J1 B1, X1 A",
+      "P1 Button 2": "X, J1 B2, X1 B",
+      "Pause": "Enter, J1 B10, X1 Start"
+    },
+    "Game Gear Controls": {
+      "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
+      "P1 Down": "Down, J1 POV0D, X1 DpadDown, X1 LStickDown",
+      "P1 Left": "Left, J1 POV0L, X1 DpadLeft, X1 LStickLeft",
+      "P1 Right": "Right, J1 POV0R, X1 DpadRight, X1 LStickRight",
+      "P1 Button 1": "Z, J1 B1, X1 A",
+      "P1 Button 2": "X, J1 B2, X1 B",
+      "P1 Start": "Enter, J1 B10, X1 Start"
+    },
+    "SG-1000 Controller": {
+      "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
+      "P1 Down": "Down, J1 POV0D, X1 DpadDown, X1 LStickDown",
+      "P1 Left": "Left, J1 POV0L, X1 DpadLeft, X1 LStickLeft",
+      "P1 Right": "Right, J1 POV0R, X1 DpadRight, X1 LStickRight",
+      "P1 Button 1": "Z, J1 B1, X1 A",
+      "P1 Button 2": "X, J1 B2, X1 B"
+    },
+    "ColecoVision Controller": {
+      "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
+      "P1 Down": "Down, J1 POV0D, X1 DpadDown, X1 LStickDown",
+      "P1 Left": "Left, J1 POV0L, X1 DpadLeft, X1 LStickLeft",
+      "P1 Right": "Right, J1 POV0R, X1 DpadRight, X1 LStickRight",
+      "P1 Left Button": "Z, J1 B1, X1 A",
+      "P1 Right Button": "X, J1 B2, X1 B",
+      "P1 Key 1": "Number1",
+      "P1 Key 2": "Number2",
+      "P1 Key 3": "Number3",
+      "P1 Key 4": "Number4",
+      "P1 Key 5": "Number5",
+      "P1 Key 6": "Number6",
+      "P1 Key 7": "Number7",
+      "P1 Key 8": "Number8",
+      "P1 Key 9": "Number9",
+      "P1 Key 0": "Number0",
+      "P1 Key *": "Minus",
+      "P1 Key #": "Equals"
     }
   },
   "AllTrollersAutoFire": {
