@@ -1,0 +1,3 @@
+[submodule "extern/MesenCE"]
+	path = extern/MesenCE
+	url = https://github.com/nesdev-org/MesenCE.git

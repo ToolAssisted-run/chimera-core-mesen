@@ -1,0 +1,36 @@
+--- a/Core/Shared/BaseControlManager.h
++++ b/Core/Shared/BaseControlManager.h
+@@ -46,6 +46,11 @@
+ 	void ProcessEndOfFrame();
+ 
+ 	void SetInputReadFlag();
++#ifdef MESEN_INPUT_READ_HOOK
++	//Called at each read of the controls, for a host that wants to know
++	//when, within a frame, the machine reads them.
++	static void (*InputReadHook)();
++#endif
+ 	uint32_t GetLagCounter();
+ 	void ResetLagCounter();
+ 
+--- a/Core/Shared/BaseControlManager.cpp
++++ b/Core/Shared/BaseControlManager.cpp
+@@ -195,10 +195,19 @@
+ 	_wasInputRead = false;
+ }
+ 
++#ifdef MESEN_INPUT_READ_HOOK
++void (*BaseControlManager::InputReadHook)() = nullptr;
++#endif
++
+ void BaseControlManager::SetInputReadFlag()
+ {
+ 	//Used for lag counter - any frame where the input is read does not count as lag
+ 	_wasInputRead = true;
++#ifdef MESEN_INPUT_READ_HOOK
++	if(InputReadHook) {
++		InputReadHook();
++	}
++#endif
+ }
+ 
+ uint32_t BaseControlManager::GetLagCounter()

@@ -1,0 +1,129 @@
+--- a/Utilities/RandomHelper.h
++++ b/Utilities/RandomHelper.h
+@@ -2,13 +2,40 @@
+ #include "pch.h"
+ #include <random>
+ 
++#ifdef MESEN_FIXED_RANDOM
++//A host that must reproduce a run gives the emulator a sequence of its own in
++//place of std::random_device (which reads the processor's RDRAND). The state
++//is a plain global, so it is part of whatever holds the emulator's memory.
++//MesenFixedRandom::Seed() starts the sequence again from a host-chosen seed.
++class MesenFixedRandom
++{
++public:
++	typedef uint32_t result_type;
++	static constexpr result_type min() { return 0; }
++	static constexpr result_type max() { return 0xFFFFFFFFu; }
++	static uint64_t& State() { static uint64_t state = 0x853C49E6748FEA9Bull; return state; }
++	static void Seed(uint64_t seed) { State() = seed * 6364136223846793005ull + 0x853C49E6748FEA9Bull; }
++	result_type operator()()
++	{
++		//splitmix64
++		uint64_t z = (State() += 0x9E3779B97F4A7C15ull);
++		z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
++		z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
++		return (result_type)((z ^ (z >> 31)) >> 32);
++	}
++};
++#define MESEN_RANDOM_DEVICE MesenFixedRandom
++#else
++#define MESEN_RANDOM_DEVICE std::random_device
++#endif
++
+ class RandomHelper
+ {
+ public:
+ 	template<typename T>
+ 	static T GetValue(T min, T max)
+ 	{
+-		std::random_device rd;
++		MESEN_RANDOM_DEVICE rd;
+ 		std::mt19937 mt(rd());
+ 		std::uniform_int_distribution<> dist(min, max);
+ 		return dist(mt);
+--- a/Core/Shared/EmuSettings.cpp
++++ b/Core/Shared/EmuSettings.cpp
+@@ -1,4 +1,5 @@
+ #include "pch.h"
++#include "Utilities/RandomHelper.h"
+ #include <random>
+ #include "Shared/EmuSettings.h"
+ #include "Shared/KeyManager.h"
+@@ -15,7 +16,7 @@
+ 	_flags = 0;
+ 	_debuggerFlags = 0;
+ 
+-	std::random_device rd;
++	MESEN_RANDOM_DEVICE rd;
+ 	_mt = std::mt19937(rd());
+ }
+ 
+--- a/Core/NES/NesCpu.cpp
++++ b/Core/NES/NesCpu.cpp
+@@ -1,4 +1,5 @@
+ #include "pch.h"
++#include "Utilities/RandomHelper.h"
+ #include <random>
+ #include <assert.h>
+ #include "Utilities/Serializer.h"
+@@ -143,7 +144,7 @@
+ 
+ 	uint8_t cpuOffset = 0;
+ 	if(_console->GetNesConfig().RandomizeCpuPpuAlignment) {
+-		std::random_device rd;
++		MESEN_RANDOM_DEVICE rd;
+ 		std::mt19937 mt(rd());
+ 		std::uniform_int_distribution<> distPpu(0, ppuDivider - 1);
+ 		std::uniform_int_distribution<> distCpu(0, cpuDivider - 1);
+--- a/Core/NES/BaseMapper.cpp
++++ b/Core/NES/BaseMapper.cpp
+@@ -1,4 +1,5 @@
+ #include "pch.h"
++#include "Utilities/RandomHelper.h"
+ #include <random>
+ #include <assert.h>
+ #include "NES/BaseMapper.h"
+@@ -448,7 +449,7 @@
+ uint8_t BaseMapper::GetPowerOnByte(uint8_t defaultValue)
+ {
+ 	if(_console->GetNesConfig().RandomizeMapperPowerOnState) {
+-		std::random_device rd;
++		MESEN_RANDOM_DEVICE rd;
+ 		std::mt19937 mt(rd());
+ 		std::uniform_int_distribution<> dist(0, 255);
+ 		return dist(mt);
+--- a/Core/Shared/Audio/AudioPlayerHud.cpp
++++ b/Core/Shared/Audio/AudioPlayerHud.cpp
+@@ -1,4 +1,5 @@
+ #include "pch.h"
++#include "Utilities/RandomHelper.h"
+ #include "Shared/Audio/AudioPlayerHud.h"
+ #include "Shared/Audio/SoundMixer.h"
+ #include "Shared/Video/DebugHud.h"
+@@ -178,7 +179,7 @@
+ 		AudioTrackInfo track = _emu->GetAudioTrackInfo();
+ 		if(!cfg.Repeat) {
+ 			if(cfg.Shuffle) {
+-				std::random_device rd;
++				MESEN_RANDOM_DEVICE rd;
+ 				std::mt19937 mt(rd());
+ 				std::uniform_int_distribution<> dist(0, track.TrackCount - 1);
+ 				params.Action = AudioPlayerAction::SelectTrack;
+--- a/Core/Netplay/GameServerConnection.cpp
++++ b/Core/Netplay/GameServerConnection.cpp
+@@ -1,4 +1,5 @@
+ #include "pch.h"
++#include "Utilities/RandomHelper.h"
+ #include <random>
+ #include "Netplay/GameServerConnection.h"
+ #include "Netplay/HandShakeMessage.h"
+@@ -32,7 +33,7 @@
+ 
+ void GameServerConnection::SendServerInformation()
+ {
+-	std::random_device rd;
++	MESEN_RANDOM_DEVICE rd;
+ 	std::mt19937 engine(rd());
+ 	std::uniform_int_distribution<> dist((int)' ', (int)'~');
+ 	string hash(50, ' ');

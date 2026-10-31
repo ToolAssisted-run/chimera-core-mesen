@@ -1,0 +1,181 @@
+# chimera-core-mesen: Mesen as a Chimera core
+
+This is the design log of the Mesen core: what was decided, why, and what
+was measured. Entries are dated. The last section, "Where this stands", is
+kept current for whoever continues the work.
+
+The request is chimera issue #410: Mesen 2 or its community edition MesenCE,
+for the NES with the EPSM sound expansion.
+
+## 2026-10-31: feasibility
+
+### Which Mesen
+
+There are two repositories:
+
+- https://github.com/SourMesen/Mesen2 - the original. Its README now says it
+  is "an archive of Mesen as it was around version 2.1.1 in mid-2025" and
+  sends people to the community edition. Last commit b9fa69dd (2026-06-04),
+  a README change.
+- https://github.com/nesdev-org/MesenCE - the community edition, the same
+  code carried on by the NESdev community (Sour, the original author, still
+  commits there). 3809 commits against Mesen2's 3511.
+
+Both have the EPSM. MesenCE has two EPSM fixes Mesen2 does not:
+963f9f2e "Fixes EPSM so that it works correctly after reset" and 41c27b82
+"NES: EPSM: ymfm fixes (#292)" (2026-10-07, a sync of the YM chip library
+with its upstream). The core pins **MesenCE at 4b8a196e** (2026-10-07), the
+head of its default branch when the work started. It is where Mesen is
+maintained now and it has the better EPSM. (Which fork is the owner's to
+confirm; see "Questions for the owner".)
+
+### What the EPSM is in Mesen, and how complete
+
+The EPSM ("Expansion Port Sound Module") is a Yamaha YMF288 (OPN3-L, the
+YM2608's cut-down sister) on the Famicom expansion port. In MesenCE:
+
+- `Core/NES/Epsm.{h,cpp}` and `Core/NES/OpnInterface.h` wrap the YMF288 of
+  ymfm (Aaron Giles' Yamaha FM library, BSD-3, in `Utilities/Audio/ymfm`),
+  clocked at 8 MHz from the NES master clock and resampled into Mesen's
+  mixer.
+- All three parts of the chip are there: 6 FM channels, the 3-channel SSG,
+  and the 6-instrument rhythm part (ADPCM-A). The YMF288 has no ADPCM-B, so
+  nothing is missing there.
+- Both ways a game writes the chip work: the registers at $401C-$401F, and
+  the $4016 "OUT1" interface (two writes per register, data on the bus).
+  The chip's timers raise the CPU's IRQ. Reads of the chip return 0: there
+  is no status read, as on the cartridge.
+- The EPSM is plugged in by the cartridge's header only: an NES 2.0 header
+  with console type 3 and extended console type 4. Mesen has no setting to
+  force it.
+- The rhythm part plays samples from the chip's own 8 KiB ROM, which Mesen
+  reads from the firmware file `ymf288_adpcm_rom.bin`. It is Yamaha's data
+  and the user brings it. Without it Mesen plays zeros there: FM and SSG
+  sound, the drums are silent.
+- The volume is a Mesen setting (`EpsmVolume`, 0-100).
+
+### What this core adds to Chimera
+
+Chimera already runs the NES in quickerNES, Mednafen and ares. Mesen adds:
+
+- the EPSM, which none of them has;
+- Mesen's accuracy: a cycle-accurate CPU, PPU and APU tested against the
+  community's test ROMs, more than 300 mappers, every Famicom expansion
+  audio chip (VRC6, VRC7, MMC5, Namco 163, Sunsoft 5B, FDS), and the
+  NES 2.0 game database Mesen's UI ships (10655 games), compiled in;
+- later, Mesen's other systems (below).
+
+### The questions of docs/new-core.md, section 1
+
+- **Licence.** GPL-3.0 at the pinned commit (`LICENSE`). Modification and
+  binary redistribution are allowed with the source. The libraries inside
+  are GPL-compatible: ymfm (BSD-3), miniz (public domain), spng (BSD-2 and
+  libpng), kissfft (BSD-3), magic_enum (MIT), Lua 5.4 (MIT) with
+  luasocket (MIT), the 7-Zip LZMA SDK (public domain), xBRZ and Scale2x
+  (GPL), HQX, blip_buf and nes_ntsc (LGPL), stb_vorbis and gif.h (public
+  domain).
+- **One thread on one clock.** Mesen runs the machine on an emulation
+  thread of its own, decodes pictures on a second and renders on a third,
+  and paces frames with a frame limiter that sleeps. Patch 0001 makes all of
+  that a build option: one frame on the caller's thread, no limiter. The
+  NES has no calendar clock; nothing in the machine reads the host's time.
+  Mesen has its own savestates, movies, rewind and netplay, which is the
+  best sign there is that the machine is deterministic.
+- **Randomness.** Mesen draws power-on values (RAM, CPU/PPU alignment when
+  asked) from `std::random_device`, which on x86 is the RDRAND instruction.
+  Patch 0002 gives it a sequence of its own (splitmix64, its state a plain
+  global in the guest's memory) seeded from a setting, `randomSeed`.
+- **The picture.** The machine's own framebuffer: the PPU's output, turned
+  into colours by Mesen's default video filter with the palette Mesen's UI
+  uses by default. No GPU.
+- **Recompiler.** None.
+- **What the user brings.** The game. For an EPSM game's drums,
+  `ymf288_adpcm_rom.bin` (8 KiB). For the Famicom Disk System, its BIOS
+  (not offered yet).
+- **What CI can run.** Everything, on free content: the homebrew games
+  Nova the Squirrel and Sprilo (the same files the quickerNES core's
+  repository carries), and an EPSM test program written for this repository
+  (`tests/epsm-test/make-epsm-test.py`). Only the EPSM drums with the real
+  rhythm ROM need a file CI cannot have; their leg uses a made-up ROM to
+  prove the file reaches the chip.
+- **Memory.** The whole of Mesen's library is about 13 MB of guest code.
+  An NES game needs little memory; the layout is 64 MiB sbrk, 4 sealed,
+  4 invisible, 4 plain, 64 mmap. A savestate of Nova is 1.4 MB.
+
+### Mesen's other systems
+
+The core compiles the whole of Mesen's library, so the SNES, Game Boy and
+Game Boy Color, Game Boy Advance, PC Engine (and CD), Master System, Game
+Gear and WonderSwan are already inside `core.wbx`; loading one of their
+games is refused today with "not an NES game". Each would need, as a
+machine of this package (the ares core's shape): its controller
+declaration, its memory domains, its settings, and its firmware - the GBA
+BIOS (required), the SNES coprocessor programs (DSP-1 to 4, ST010/11, the
+Super Game Boy), the PC Engine CD system card, the optional Game Boy and
+WonderSwan boot ROMs. The engine side (one thread, the random sequence) is
+shared and done. Each system is a few days of declarations and tests; the
+SNES and the GBA would be the ones worth doing first, for Mesen's accuracy.
+
+## 2026-10-31: the build
+
+- `extern/MesenCE`, pinned at 4b8a196e, never edited in place.
+- `patches/`, applied all or none by `waterbox/apply-patches.sh` (meson runs
+  it at every configure). Each is a build option, off in Mesen's own build:
+  - 0001 `MESEN_SINGLE_THREAD`: `Emulator::RunSingleFrame()`, no emulation,
+    decode or render thread, no frame limiter, and
+    `VideoDecoder::SetDecodeEnabled` for turbo;
+  - 0002 `MESEN_FIXED_RANDOM`: `MESEN_RANDOM_DEVICE` in place of
+    `std::random_device` at its six uses;
+  - 0003 `MESEN_INPUT_READ_HOOK`: a function called at each read of
+    $4016/$4017, for Chimera's input-poll callback (chimera#344).
+- `meson.build` builds both flavors from the same sources:
+  `waterbox/list-sources.py` lists Mesen's Core, Utilities, SevenZip and Lua
+  (434 files, Mesen's own makefile's set less the frontends), and
+  `waterbox/embed-db.py` compiles the game database in.
+- `waterbox/mesen.cpp` is the adapter. It makes one `Emulator`, sets it up
+  the way Mesen's UI does by default (the UI passes its settings in, and
+  some of the core's own defaults are not the UI's: every channel volume
+  is 0 and the palette is empty in the core), and hands it three devices:
+  an input provider, a sound device that keeps the frame's samples (48000 Hz
+  stereo) and a rendering device that keeps the frame's picture.
+- `waterbox/guest-syscalls.c`: `mkdir` answers "read-only" (Mesen makes sure
+  its folders exist whenever it asks for one).
+
+Traps met:
+
+- **Mesen's settings reset the firmware folder.** `EmuSettings::SetPreferences`
+  calls `FolderUtilities::SetFolderOverrides(..., "")`: the firmware override
+  is set to nothing every time preferences are set. The adapter sets the
+  folders after it sets the preferences; before that, Mesen looked in
+  `./Firmware/` and the rhythm ROM was never found.
+- **An input provider belongs to the console, not the emulator.**
+  `Emulator::RegisterInputProvider` passes it to the console that exists at
+  that moment. Registered before the game is loaded it goes nowhere, and a
+  power cycle makes a new console. The adapter registers it after the load
+  and after every power cycle.
+- **The core's defaults are not the UI's.** All NES channel volumes default
+  to 0 in `SettingTypes.h` (the UI sets 100), and `UserPalette` is all zeros.
+
+Measured (native reference, this machine):
+
+- Nova the Squirrel, 600 frames of the pad exercise: 0.7 s natively; native
+  and sandbox agree on every digest; the sandbox with a save and a load
+  around every frame agrees too (1.0 s); a state saved at frame 300 and
+  loaded by another process ends on the same machine at frame 600.
+- Nova with this repository's schedule (`tests/inputs/nova.inputs`, 3000
+  frames: Start through the title, A through the story, then running right)
+  reaches the first level.
+- The EPSM test program: with the EPSM header the sound has an RMS of about
+  4450 (FM and SSG playing); the same program with a plain header is silent.
+  A made-up 8 KiB rhythm ROM changes the sound (RMS about 3400), which shows
+  the firmware file reaches the chip.
+
+## Questions for the owner
+
+- Which fork: MesenCE (recommended, chosen) or the archived Mesen2.
+- This repository's own licence: GPL-3.0, Mesen's own, because the adapter
+  carries Mesen's default palette table and the patches are Mesen's code.
+  Other cores' adapters are MIT; this one cannot be.
+- Mesen's library contains netplay (`Core/Netplay`) and luasocket in its Lua.
+  Both are compiled in and never called; the sandbox has no network calls
+  to give them. Patching them out is possible (a build option each).
