@@ -6,7 +6,8 @@ the community edition of Mesen 2, built into
 sandbox and packaged for [Chimera](https://github.com/ToolAssisted-run/chimera),
 a frontend for tool-assisted speedruns. It runs NES games, with Mesen's
 accuracy and the **EPSM** sound expansion (a Yamaha YMF288 on the Famicom's
-expansion port) that some new NES games use.
+expansion port) that some new NES games use. The controller ports hold a
+pad, the Four Score (four players), the Zapper or the Arkanoid controller.
 
 Mesen's other systems (SNES, Game Boy, GBA, PC Engine, Master System,
 WonderSwan) are compiled in but not offered yet; `docs/PLAN.md` says what

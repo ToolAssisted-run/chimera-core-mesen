@@ -17,6 +17,7 @@
 extern int Init(void);
 extern const char *GetLoadError(void);
 extern void SetButton(int32_t index, int32_t state);
+extern void SetAxis(int32_t index, int32_t value);
 extern void FrameAdvance(uint64_t packed);
 extern uint32_t *GetVideoBgra(void);
 extern int GetVideoWidth(void);
@@ -72,6 +73,7 @@ int main(int argc, char **argv)
 		.init = Init,
 		.load_error = GetLoadError,
 		.set_button = SetButton,
+		.set_axis = SetAxis,
 		.frame = frame,
 		.video = video,
 		.audio = audio,

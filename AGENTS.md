@@ -13,7 +13,7 @@ step; `docs/PLAN.md` the reasons and the state of the work.
 - `patches/` - every change to upstream, numbered, each a build option off
   in Mesen's own build (single thread, a random sequence of our own, a hook
   at each read of the controls, bare file names, saved games kept by the
-  host, no network code). `patches/series-marker` names the string the last patch adds.
+  host, no network code, the Arkanoid knob where the host says). `patches/series-marker` names the string the last patch adds.
 - `meson.build` - one build, two flavors: native (`run-native`, `run-wbx`)
   and guest (`core.wbx`, through the cross file `waterbox/setup-guest.sh`
   writes).
@@ -25,8 +25,9 @@ step; `docs/PLAN.md` the reasons and the state of the work.
   frontend test (`run-frontend.sh`) and its helpers.
 - `waterbox/waterbox.config`, `file_slots.json`, `default_keybinds.json`,
   `package-licenses.json`, `languages/` - the package's declarations.
-- `tests/roms/` - free homebrew and the EPSM test program;
-  `tests/epsm-test/make-epsm-test.py` builds the latter; `tests/inputs/` -
+- `tests/roms/` - free homebrew, the EPSM test program and the input test
+  program; `tests/epsm-test/make-epsm-test.py` and
+  `tests/input-test/make-input-test.py` build the last two; `tests/inputs/` -
   input schedules written here.
 - `build/` - every output (ignored by git).
 
@@ -37,10 +38,10 @@ MB=<chimera>/extern/chimera-common-minibox     # built with -Dguest_cpp=true in 
 git submodule update --init
 meson setup build/meson-native -Dminibox_dir="$MB" && ninja -C build/meson-native -j4
 sh waterbox/setup-guest.sh -m "$MB" && ninja -C build/meson-guest -j4
-./waterbox/run-gate.sh                                   # 29 ok, 0 failed, the engine checks skipped
+./waterbox/run-gate.sh                                   # 34 ok, 0 failed, the engine checks skipped
 ./waterbox/build-package.sh -m "$MB" -o build/Cores
 <chimera>/build/meson-linux/source/ui/test-packages build/Cores
-CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 33 ok, 0 failed
+CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 40 ok, 0 failed
 ./waterbox/tests/run-frontend.sh --chimera-root <chimera> [--qt-lib <Qt lib folder>]   # 5 ok
 python3 <chimera>/tools/check-core-texts.py .            # every key named
 ```

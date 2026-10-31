@@ -402,6 +402,66 @@ It was run with one bent text left (Swedish `suggest.epsm`, "YMF288:s") and
 `texts:chimera` runs Chimera's `check-core-texts.py` and
 `check-proper-nouns.py` too when `CHIMERA_ROOT` is given.
 
+## 2026-10-31: the Four Score, the Zapper and the Arkanoid controller
+
+The ports now hold more than a pad (settings `port1` and `port2`):
+
+- `port1`: Controller, Nothing, or the **Four Score**, which takes both
+  ports and holds four pads (players 3 and 4 are read after 1 and 2, then a
+  signature, as on the adapter);
+- `port2`: Nothing, Controller, the **Zapper** (light gun), or the
+  **Arkanoid controller** (a knob and one button).
+
+The controller declaration is the union of all of them, in a wire order that
+only grows (old movies keep their columns): Power, Reset, pads 1 to 4, then
+P2 Trigger (the Zapper's, letter T) and P2 Fire (the knob's button, letter
+F); axes P2 Zapper X and Y (0 to 65535 across the picture, the spelling new
+work uses for a place on the screen, turned into Mesen's pixels in the
+core) and P2 Paddle (the knob, 0 to 160 as in the quickerNES core). The core
+now exports `IsButtonActive` and `IsAxisActive`, so a machine shows and
+records only the controls its ports hold; with the defaults (a pad in port
+1, nothing in port 2) a movie has the console's group and player 1's.
+
+- The Four Score's four pads are set through Mesen's controller hub
+  (`IControllerHub`), each sub-port a player.
+- The Zapper is given its coordinates and trigger each frame; Mesen decides
+  whether it sees light from the picture the PPU has drawn so far, as on the
+  console (light detection radius 0, Mesen's own default).
+- The Arkanoid controller: Mesen moves its knob by the mouse's movement, so
+  its position would depend on every frame before. Patch 0007
+  (`MESEN_ABSOLUTE_PADDLE`) makes the position the frame's own input: the
+  host sets it, and the controller reads it at each strobe.
+- Default keys: the mouse's place is where the Zapper points and where the
+  knob is, its left button the trigger and the knob's button.
+- The Famicom's expansion port (its Zapper, Arkanoid controller, four-player
+  adapters and keyboards) and the Famicom Disk System are not offered.
+
+The test cartridge, `tests/input-test/make-input-test.py`
+(`tests/roms/input-test.nes`, our own program): it draws the right half of
+the screen white and the left half black, keeps 24 raw reads of each port
+from every frame in RAM, and counts how many reads of $4017 it takes before
+the Zapper sees light. Checks in `run-gate.sh`:
+
+- `dev:fourScore`, `dev:zapper`, `dev:arkanoid`: a 240-frame schedule that
+  moves every control of the device gives the same machine natively,
+  sandboxed, and sandboxed with a save and a load around every frame; the
+  RAM shows the last frame's controls (the four pads and both signatures;
+  the trigger; the knob, 0x54 plus the paddle's value, and its button); and
+  with a plain pad in the ports the cartridge does not read the same.
+- `dev:zapper-light`: pointed at the white half it sees light, after 226
+  reads pointed high and 1135 pointed low; pointed at the black half it
+  sees none; native == sandbox.
+- `engine:devices`: each schedule written as a Chimera movie with only the
+  machine's active controls, played by chimera-run in a project with the
+  device in its port, ends on the native reference's RAM.
+
+Seen to fail, all four at once with the adapter broken on purpose in four
+places and rebuilt: the Four Score's players 1 and 3 swapped
+(`dev:fourScore`); the Zapper's Y taken from its X (`dev:zapper-light`:
+the same count high and low); the knob at half its place (`dev:arkanoid`:
+0x73, not 0x93); the Zapper's axes said inactive (`engine:devices`). Put
+back: 40 ok, 0 failed with `CHIMERA_ROOT`.
+
 ## Where this stands (2026-10-31)
 
 Works, and is tested here on Linux:

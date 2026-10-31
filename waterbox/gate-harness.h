@@ -6,13 +6,19 @@
  * lag and every memory domain. The two drivers differ only in how the
  * exports are reached.
  *
- * Wire (waterbox.config button order): 0 Power, 1 Reset, then P1 and P2 x
- * {A, B, Select, Start, Up, Down, Left, Right}.
+ * Wire (waterbox.config button order): 0 Power, 1 Reset, then P1, P2, P3
+ * and P4 x {A, B, Select, Start, Up, Down, Left, Right}, 34 P2 Trigger (the
+ * Zapper), 35 P2 Fire (the Arkanoid controller). Axes: 0 P2 Zapper X, 1 P2
+ * Zapper Y (0..65535), 2 P2 Paddle (0..160).
  *
  * Input files are this repository's own: one line per frame,
- *     |Pr|UDLRSsBA|UDLRSsBA|
+ *     |Pr|UDLRSsBA|UDLRSsBA|UDLRSsBA|UDLRSsBA|@T F x=N y=N p=N|
  * a '.' for a button not held, the letter for one held (the console field
- * is P = Power, r = Reset; the second pad field is optional).
+ * is P = Power, r = Reset). Pad fields are P1 to P4, as many as the line
+ * has (at least one). The last field, starting with '@', is optional: T
+ * holds the Zapper's trigger, F the Arkanoid controller's button, x= and y=
+ * say where the Zapper points and p= where the knob is; an axis a line does
+ * not name rests at its neutral value (32768, 32768, 80).
  */
 #ifndef GATE_HARNESS_H
 #define GATE_HARNESS_H
@@ -23,13 +29,17 @@
 #include <string.h>
 #include <time.h>
 
-#define GATE_BTN_COUNT (2 + 2 * 8)
+#define GATE_BTN_COUNT (2 + 4 * 8 + 2)
+#define GATE_AXIS_COUNT 3
+static const int32_t gate_axis_neutral[GATE_AXIS_COUNT] = { 32768, 32768, 80 };
 
 struct gate_core
 {
 	int (*init)(void);
 	const char *(*load_error)(void);
 	void (*set_button)(int32_t index, int32_t state);
+	/* the axes, each pushed before every frame, as Chimera does */
+	void (*set_axis)(int32_t index, int32_t value);
 	void (*frame)(void);
 	const uint32_t *(*video)(int *w, int *h);
 	const int16_t *(*audio)(int *n);
@@ -145,23 +155,47 @@ static int gate_parse_pad(const char *s, uint8_t *buttons, int base)
 	return 1;
 }
 
-static int gate_parse_line(const char *line, uint8_t *buttons)
+/* the '@' field: T, F, x=N, y=N, p=N separated by spaces, up to the '|' */
+static int gate_parse_extra(const char *s, uint8_t *buttons, int32_t *axes)
+{
+	s++; /* '@' */
+	while (*s && *s != '|')
+	{
+		if (*s == ' ') { s++; continue; }
+		if (*s == 'T') { buttons[34] = 1; s++; continue; }
+		if (*s == 'F') { buttons[35] = 1; s++; continue; }
+		int axis = *s == 'x' ? 0 : *s == 'y' ? 1 : *s == 'p' ? 2 : -1;
+		if (axis < 0 || s[1] != '=') return 0;
+		char *end;
+		long v = strtol(s + 2, &end, 10);
+		if (end == s + 2) return 0;
+		axes[axis] = (int32_t)v;
+		s = end;
+	}
+	return *s == '|' && s[1] == 0;
+}
+
+static int gate_parse_line(const char *line, uint8_t *buttons, int32_t *axes)
 {
 	memset(buttons, 0, GATE_BTN_COUNT);
+	for (int i = 0; i < GATE_AXIS_COUNT; i++)
+		axes[i] = gate_axis_neutral[i];
 	const char *s = line;
 	if (*s++ != '|') return 0;
 	if (*s != '.' && *s != 'P') return 0;
 	buttons[0] = *s++ == 'P';
 	if (*s != '.' && *s != 'r') return 0;
 	buttons[1] = *s++ == 'r';
-	for (int pad = 0; pad < 2; pad++)
+	int pads = 0;
+	for (;;)
 	{
 		if (*s++ != '|') return 0;
-		if (*s == 0) return pad > 0;
-		if (!gate_parse_pad(s, buttons, 2 + pad * 8)) return 0;
+		if (*s == 0) return pads > 0;
+		if (*s == '@') return pads > 0 && gate_parse_extra(s, buttons, axes);
+		if (pads == 4 || !gate_parse_pad(s, buttons, 2 + pads * 8)) return 0;
+		pads++;
 		s += 8;
 	}
-	return *s == '|' && s[1] == 0;
 }
 
 static int gate_write_tga(const char *path, const uint32_t *bgra, int w, int h)
@@ -214,6 +248,7 @@ static int gate_run(const struct gate_core *c, const struct gate_opts *o)
 
 	uint8_t buttons[GATE_BTN_COUNT];
 	uint8_t prev[GATE_BTN_COUNT];
+	int32_t axes[GATE_AXIS_COUNT];
 	memset(prev, 0, sizeof prev);
 	if (o->loadPath)
 	{
@@ -224,7 +259,7 @@ static int gate_run(const struct gate_core *c, const struct gate_opts *o)
 		}
 		/* what the frontend would have pressed before the save is pressed now */
 		if (o->loadAt > 0 && o->loadAt - 1 < in.count)
-			gate_parse_line(in.lines[o->loadAt - 1], prev);
+			gate_parse_line(in.lines[o->loadAt - 1], prev, axes);
 		else if (o->loadAt > 0 && o->exercise)
 			gate_exercise_pad(o->loadAt - 1, prev);
 	}
@@ -245,9 +280,11 @@ static int gate_run(const struct gate_core *c, const struct gate_opts *o)
 			return 0;
 		}
 		memset(buttons, 0, sizeof buttons);
+		for (int i = 0; i < GATE_AXIS_COUNT; i++)
+			axes[i] = gate_axis_neutral[i];
 		if (f < in.count)
 		{
-			if (!gate_parse_line(in.lines[f], buttons))
+			if (!gate_parse_line(in.lines[f], buttons, axes))
 			{
 				fprintf(stderr, "bad input line %ld: '%s'\n", f, in.lines[f]);
 				return 1;
@@ -275,6 +312,9 @@ static int gate_run(const struct gate_core *c, const struct gate_opts *o)
 				c->set_button(i, buttons[i]);
 			prev[i] = buttons[i];
 		}
+		if (c->set_axis)
+			for (int i = 0; i < GATE_AXIS_COUNT; i++)
+				c->set_axis(i, axes[i]);
 
 		c->frame();
 

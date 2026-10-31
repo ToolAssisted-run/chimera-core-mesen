@@ -27,7 +27,8 @@ endif
 # repository's patches: one thread (0001), a random sequence of our own
 # (0002), a call at each read of the controls (0003), files named by their
 # bare names in the folder "." (0004), saved games kept by the host (0005),
-# no network code (0006; waterbox/list-sources.py leaves its sources out).
+# no network code (0006; waterbox/list-sources.py leaves its sources out),
+# the Arkanoid controller's knob where the host says it is (0007).
 defs = [
   '-DNDEBUG',
   '-DMESEN_SINGLE_THREAD',
@@ -36,6 +37,7 @@ defs = [
   '-DMESEN_BARE_PATHS',
   '-DMESEN_BATTERY_SINK',
   '-DMESEN_NO_NETWORK',
+  '-DMESEN_ABSOLUTE_PADDLE',
 ]
 add_project_arguments(defs + ['-fno-strict-aliasing', '-Wno-narrowing'], language: ['c', 'cpp'])
 

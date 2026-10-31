@@ -1,0 +1,29 @@
+Build option MESEN_ABSOLUTE_PADDLE: the Arkanoid controller's knob is where
+the host says it is.
+
+Mesen moves the knob by the mouse's movement since the last read, which
+makes its position depend on every frame before. A tool-assisted run wants
+the knob's position to be the frame's own input, as a movie holds it. With
+this option the host sets the device's X coordinate to the position, from
+0 to 160 (the knob's range, 0x54 to 0xF4, less 0x54), and the controller
+reads it from there at each strobe.
+
+--- a/Core/NES/Input/ArkanoidController.h
++++ b/Core/NES/Input/ArkanoidController.h
+@@ -40,9 +40,16 @@
+ 
+ 	void RefreshStateBuffer() override
+ 	{
++#ifdef MESEN_ABSOLUTE_PADDLE
++		//A host that knows where the knob is (a movie's value for the frame)
++		//sets it as the X coordinate, from 0 to 160, instead of moving it:
++		//the knob's position is then the frame's input and nothing else.
++		int32_t newValue = 0x54 + GetCoordinates().X;
++#else
+ 		MouseMovement mov = GetMovement();
+ 
+ 		int32_t newValue = (int32_t)_currentValue + mov.dx;
++#endif
+ 		if(newValue < 0x54) {
+ 			newValue = 0x54;
+ 		} else if(newValue > 0xF4) {

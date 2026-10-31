@@ -53,6 +53,7 @@ static mb_host *g_host;
 static intfn g_Init;
 static ptrfn g_GetLoadError;
 static setfn g_SetButton;
+static setfn g_SetAxis;
 static framefn g_FrameAdvance;
 static ptrfn g_GetVideoBgra;
 static intfn g_GetVideoWidth, g_GetVideoHeight;
@@ -86,6 +87,7 @@ static int core_init(void) { return g_Init(); }
 static int core_init_done(void) { return 1; } /* boot happens before Seal, not in gate_run */
 static const char *core_load_error(void) { return (const char *)g_GetLoadError(); }
 static void core_set_button(int32_t i, int32_t s) { g_SetButton(i, s); }
+static void core_set_axis(int32_t i, int32_t v) { g_SetAxis(i, v); }
 static void core_frame(void) { g_FrameAdvance(0); }
 static void core_set_rendering(int on) { g_SetRenderingEnabled(on); }
 static const uint32_t *core_video(int *w, int *h)
@@ -208,6 +210,7 @@ int main(int argc, char **argv)
 	g_Init = (intfn)proc(g_host, "Init");
 	g_GetLoadError = (ptrfn)proc(g_host, "GetLoadError");
 	g_SetButton = (setfn)proc(g_host, "SetButton");
+	g_SetAxis = (setfn)proc(g_host, "SetAxis");
 	g_FrameAdvance = (framefn)proc(g_host, "FrameAdvance");
 	g_SetRenderingEnabled = (voidfn_i)proc(g_host, "SetRenderingEnabled");
 	g_GetVideoBgra = (ptrfn)proc(g_host, "GetVideoBgra");
@@ -232,6 +235,7 @@ int main(int argc, char **argv)
 		.init = core_init,
 		.load_error = core_load_error,
 		.set_button = core_set_button,
+		.set_axis = core_set_axis,
 		.frame = core_frame,
 		.video = core_video,
 		.audio = core_audio,

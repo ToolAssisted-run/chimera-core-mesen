@@ -45,6 +45,7 @@
 #include "NES/NesMemoryManager.h"
 #include "NES/GameDatabase.h"
 #include "NES/Input/NesController.h"
+#include "Shared/IControllerHub.h"
 #include "Utilities/FolderUtilities.h"
 #include "Utilities/RandomHelper.h"
 #include "Utilities/VirtualFile.h"
@@ -59,13 +60,33 @@ extern "C" const char mesen_nes_db[];
 extern "C" const size_t mesen_nes_db_size;
 
 /* ---- the wire: waterbox.config "input.buttons" order ----
- * 0 Power, 1 Reset, then P1 and P2 x {A, B, Select, Start, Up, Down, Left,
- * Right} (quickerNES's order). */
+ * 0 Power, 1 Reset, then P1, P2, P3 and P4 x {A, B, Select, Start, Up,
+ * Down, Left, Right} (quickerNES's order; P3 and P4 through the Four
+ * Score), then 34 P2 Trigger (the Zapper's) and 35 P2 Fire (the Arkanoid
+ * controller's). The declaration is the union of every device the ports
+ * can hold; IsButtonActive says which of them this machine has.
+ *
+ * Axes ("input.axes", SetAxis): 0 P2 Zapper X and 1 P2 Zapper Y (where the
+ * Zapper points, 0..65535 across the picture's width and height), 2 P2
+ * Paddle (the Arkanoid controller's knob, 0..160, as quickerNES's). */
 #define BTN_CONSOLE 2
 #define BTN_PER_PAD 8
-#define BTN_PADS 2
-#define BTN_COUNT (BTN_CONSOLE + BTN_PADS * BTN_PER_PAD)
+#define BTN_PADS 4
+#define BTN_TRIGGER (BTN_CONSOLE + BTN_PADS * BTN_PER_PAD)
+#define BTN_FIRE (BTN_TRIGGER + 1)
+#define BTN_COUNT (BTN_FIRE + 1)
 static uint8_t g_buttons[BTN_COUNT];
+
+#define AXIS_ZAPPER_X 0
+#define AXIS_ZAPPER_Y 1
+#define AXIS_PADDLE 2
+#define AXIS_COUNT 3
+static int32_t g_axes[AXIS_COUNT] = { 32768, 32768, 80 };
+
+/* what the ports hold (the settings port1 and port2) */
+enum { PORT1_GAMEPAD, PORT1_NONE, PORT1_FOUR_SCORE };
+enum { PORT2_NONE, PORT2_GAMEPAD, PORT2_ZAPPER, PORT2_ARKANOID };
+static int g_port1 = PORT1_GAMEPAD, g_port2 = PORT2_NONE;
 
 /* wire column -> NesController::Buttons bit */
 static const uint8_t kColToBit[BTN_PER_PAD] = {
@@ -119,22 +140,64 @@ static const uint32_t kDefaultPalette[64] = {
 
 /* ---- the three devices Mesen talks to ---- */
 
+static void set_pad(BaseControlDevice *device, int player)
+{
+	const uint8_t *pad = &g_buttons[BTN_CONSOLE + player * BTN_PER_PAD];
+	for (int col = 0; col < BTN_PER_PAD; col++)
+		device->SetBitValue(kColToBit[col], pad[col] != 0);
+}
+
 class ChimeraInput : public IInputProvider
 {
 public:
 	bool SetInput(BaseControlDevice *device) override
 	{
 		ControllerType t = device->GetControllerType();
-		if (t != ControllerType::NesController && t != ControllerType::FamicomController &&
-			t != ControllerType::FamicomControllerP2)
-			return false;
 		int port = device->GetPort();
-		if (port < 0 || port >= BTN_PADS)
+		switch (t) {
+		case ControllerType::NesController:
+		case ControllerType::FamicomController:
+		case ControllerType::FamicomControllerP2:
+			if (port < 0 || port > 1)
+				return false;
+			set_pad(device, port);
+			return true;
+		case ControllerType::FourScore: {
+			/* the Four Score's sub-ports are the four players: 0 and 2 are
+			 * read through $4016, 1 and 3 through $4017 */
+			IControllerHub *hub = dynamic_cast<IControllerHub *>(device);
+			if (hub == nullptr)
+				return false;
+			for (int i = 0; i < hub->GetHubPortCount() && i < BTN_PADS; i++) {
+				shared_ptr<BaseControlDevice> pad = hub->GetController(i);
+				if (pad)
+					set_pad(pad.get(), i);
+			}
+			hub->RefreshHubState();
+			return true;
+		}
+		case ControllerType::NesZapper: {
+			/* the Zapper's coordinates are the picture's pixels */
+			MousePosition pos;
+			pos.X = (int16_t)((int64_t)g_axes[AXIS_ZAPPER_X] * 256 / 65536);
+			pos.Y = (int16_t)((int64_t)g_axes[AXIS_ZAPPER_Y] * 240 / 65536);
+			device->SetCoordinates(pos);
+			device->SetBitValue(0, g_buttons[BTN_TRIGGER] != 0); /* Zapper::Fire */
+			return true;
+		}
+		case ControllerType::NesArkanoidController: {
+			/* the knob's position as an X coordinate (patch 0007) */
+			int32_t v = g_axes[AXIS_PADDLE];
+			MousePosition pos;
+			pos.X = (int16_t)(v < 0 ? 0 : v > 160 ? 160 : v);
+			pos.Y = 0;
+			device->SetCoordinates(pos);
+			device->SetBitValue(0, g_buttons[BTN_FIRE] != 0); /* ArkanoidController::Fire */
+			return true;
+		}
+		default:
 			return false;
-		const uint8_t *pad = &g_buttons[BTN_CONSOLE + port * BTN_PER_PAD];
-		for (int col = 0; col < BTN_PER_PAD; col++)
-			device->SetBitValue(kColToBit[col], pad[col] != 0);
-		return true;
+		}
 	}
 };
 
@@ -220,10 +283,12 @@ static int setting_choice(const char *name, const char *const *options, int coun
 	return dflt;
 }
 
-static ControllerType port_device(const char *name, int dflt)
+static void read_ports(void)
 {
-	static const char *const opts[] = { "none", "gamepad" };
-	return setting_choice(name, opts, 2, dflt) == 1 ? ControllerType::NesController : ControllerType::None;
+	static const char *const opts1[] = { "gamepad", "none", "fourScore" };
+	static const char *const opts2[] = { "none", "gamepad", "zapper", "arkanoid" };
+	g_port1 = setting_choice("port1", opts1, 3, PORT1_GAMEPAD);
+	g_port2 = setting_choice("port2", opts2, 4, PORT2_NONE);
 }
 
 static void configure(EmuSettings *s)
@@ -254,8 +319,20 @@ static void configure(EmuSettings *s)
 	NesConfig nes = s->GetNesConfig();
 	nes.Region = regionValues[setting_choice("region", regions, 4, 0)];
 	nes.RamPowerOnState = ramValues[setting_choice("ramPowerOnState", ramStates, 3, 0)];
-	nes.Port1.Type = port_device("port1", 1);
-	nes.Port2.Type = port_device("port2", 0);
+	read_ports();
+	static const ControllerType port2Types[] = { ControllerType::None, ControllerType::NesController,
+		ControllerType::NesZapper, ControllerType::NesArkanoidController };
+	if (g_port1 == PORT1_FOUR_SCORE) {
+		/* the Four Score takes both ports and holds four pads */
+		nes.Port1.Type = ControllerType::FourScore;
+		for (int i = 0; i < 4; i++)
+			nes.Port1SubPorts[i].Type = ControllerType::NesController;
+		nes.Port2.Type = ControllerType::None;
+	} else {
+		nes.Port1.Type = g_port1 == PORT1_GAMEPAD ? ControllerType::NesController : ControllerType::None;
+		nes.Port2.Type = port2Types[g_port2];
+	}
+	nes.LightDetectionRadius = 0; /* Mesen's UI's default */
 	nes.AutoConfigureInput = false; /* the project's ports decide, not the database */
 	nes.EnableHdPacks = false;
 	nes.DisableGameDatabase = false;
@@ -478,6 +555,44 @@ ECL_EXPORT void FrameAdvance(uint64_t packed)
 }
 
 ECL_EXPORT void SetRenderingEnabled(int on) { g_render = on != 0; }
+
+ECL_EXPORT void SetAxis(int32_t index, int32_t value)
+{
+	if (index >= 0 && index < AXIS_COUNT)
+		g_axes[index] = value;
+}
+
+/* Which declared controls this machine has, from what the ports hold
+ * (Chimera asks once, after Init). Indices are the wire's. */
+ECL_EXPORT int IsButtonActive(int32_t index)
+{
+	int fourScore = g_port1 == PORT1_FOUR_SCORE;
+	if (index < BTN_CONSOLE)
+		return index >= 0;
+	if (index < BTN_TRIGGER) {
+		int player = (index - BTN_CONSOLE) / BTN_PER_PAD;
+		switch (player) {
+		case 0: return g_port1 != PORT1_NONE;
+		case 1: return fourScore || g_port2 == PORT2_GAMEPAD;
+		default: return fourScore;
+		}
+	}
+	if (index == BTN_TRIGGER)
+		return !fourScore && g_port2 == PORT2_ZAPPER;
+	if (index == BTN_FIRE)
+		return !fourScore && g_port2 == PORT2_ARKANOID;
+	return 0;
+}
+
+ECL_EXPORT int IsAxisActive(int32_t index)
+{
+	int fourScore = g_port1 == PORT1_FOUR_SCORE;
+	if (index == AXIS_ZAPPER_X || index == AXIS_ZAPPER_Y)
+		return !fourScore && g_port2 == PORT2_ZAPPER;
+	if (index == AXIS_PADDLE)
+		return !fourScore && g_port2 == PORT2_ARKANOID;
+	return 0;
+}
 
 ECL_EXPORT uint32_t *GetVideoBgra(void) { return g_video; }
 ECL_EXPORT int GetVideoWidth(void) { return g_vwidth; }

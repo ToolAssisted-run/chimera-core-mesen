@@ -19,4 +19,9 @@ All of these may be distributed. None is a commercial game.
   header (the first says it has the EPSM); the third has the EPSM header and
   its writes through $4016 never reach the chip.
 
+- `input-test.nes` - this repository's own input test program, built by
+  `tests/input-test/make-input-test.py`: it keeps what it reads from both
+  controller ports in its RAM, for the pad, the Four Score, the Zapper and
+  the Arkanoid controller.
+
 The input schedules in `tests/inputs/` were written for this repository.

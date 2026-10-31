@@ -358,6 +358,68 @@ else
 	report "savedata:power-cycle" PASS "Power restarts the console and the battery RAM survives it"
 fi
 
+# ---------------------------------------------------------------- input devices
+# The Four Score, the Zapper and the Arkanoid controller, on this
+# repository's input test cartridge (tests/input-test), which keeps what it
+# reads from both ports in its RAM. Each device's schedule moves every one
+# of its controls (waterbox/tests/input-devices.py). It must give the same
+# machine natively, sandboxed, and sandboxed with a save and a load around
+# every frame; the RAM must show the schedule's last frame; and with a plain
+# pad in the ports instead the cartridge must not see it.
+dev="$here/tests/input-devices.py"
+device_leg() { # device settings
+	local d="$1" settings="$2" wd
+	wd="$(workdir "dev.$d" input-test.nes "$settings")"
+	python3 -I "$dev" schedule "$d" "$work/$d.inputs"
+	"$rn" "$wd" --frames 240 --inputs "$work/$d.inputs" --dump-domain RAM "$work/$d.nat.ram" 2>/dev/null | digests > "$work/$d.nat"
+	rw "$wd" --frames 240 --inputs "$work/$d.inputs" 2>/dev/null | digests > "$work/$d.box"
+	rw "$wd" --frames 240 --inputs "$work/$d.inputs" --rerecord 2>/dev/null | digests > "$work/$d.rr"
+	local seen plain
+	seen="$(python3 -I "$dev" check "$d" "$work/$d.inputs" "$work/$d.nat.ram")"
+	local seen_ok=$?
+	printf '{}' > "$wd/settings"
+	"$rn" "$wd" --frames 240 --inputs "$work/$d.inputs" --dump-domain RAM "$work/$d.plain.ram" > /dev/null 2>&1
+	plain="$(python3 -I "$dev" check "$d" "$work/$d.inputs" "$work/$d.plain.ram")"
+	local plain_ok=$?
+	if [ ! -s "$work/$d.box" ] || ! cmp -s "$work/$d.nat" "$work/$d.box"; then
+		report "dev:$d" FAIL "native and sandbox differ: $(diff "$work/$d.nat" "$work/$d.box" | short)"
+	elif ! cmp -s "$work/$d.box" "$work/$d.rr"; then
+		report "dev:$d" FAIL "a save and a load around each frame changed the machine"
+	elif [ "$seen_ok" != 0 ]; then
+		report "dev:$d" FAIL "$settings: $seen"
+	elif [ "$plain_ok" = 0 ]; then
+		report "dev:$d" FAIL "with a plain pad the cartridge read the same: $plain"
+	else
+		report "dev:$d" PASS "$settings: $seen; native == sandbox == saved and loaded each frame; a plain pad is not it"
+	fi
+}
+device_leg fourScore '{"port1":"fourScore"}'
+device_leg zapper '{"port2":"zapper"}'
+device_leg arkanoid '{"port2":"arkanoid"}'
+
+# Where the Zapper points: the cartridge's right half is white and its left
+# half black, so pointed right it sees light, sooner the higher it points,
+# and pointed left it sees none. Native == sandbox at each place.
+wd="$(workdir dev.light input-test.nes '{"port2":"zapper"}')"
+light=""
+lightSame=1
+for xy in "50000 8000" "50000 56000" "10000 32000"; do
+	set -- $xy
+	for i in $(seq 60); do echo "|..|........|@x=$1 y=$2|"; done > "$work/light.inputs"
+	"$rn" "$wd" --frames 60 --inputs "$work/light.inputs" --dump-domain RAM "$work/light.ram" > "$work/light.nat" 2>/dev/null
+	rw "$wd" --frames 60 --inputs "$work/light.inputs" 2>/dev/null > "$work/light.box"
+	cmp -s <(digests < "$work/light.nat") <(digests < "$work/light.box") || lightSame=0
+	light="$light$(python3 -I "$dev" light "$work/light.ram");"
+done
+IFS=';' read -r top bottom left _ <<< "$light"
+if [ "$lightSame" != 1 ]; then
+	report "dev:zapper-light" FAIL "native and sandbox differ"
+elif [ "${top%% *}" = 1 ] && [ "${bottom%% *}" = 1 ] && [ "${left%% *}" = 0 ] && [ "${top##* }" -lt "${bottom##* }" ]; then
+	report "dev:zapper-light" PASS "light seen high on the right after ${top##* } reads, low after ${bottom##* }, never on the left; native == sandbox"
+else
+	report "dev:zapper-light" FAIL "seen/reads: right high $top, right low $bottom, left $left"
+fi
+
 # ---------------------------------------------------------------- the build
 # No network code in the guest (patches/0006, user-decided 2026-10-31).
 if nn="$("$here/tests/check-no-network.sh" "$gst/core.wbx" 2>&1)"; then
@@ -478,8 +540,33 @@ PYMOV
 	else
 		report "engine:movie" FAIL "the movie through Chimera ends on another RAM than the native run"
 	fi
+
+	# The input devices through Chimera: each device's schedule written as a
+	# Chimera movie with only the controls the machine has (the core's
+	# IsButtonActive and IsAxisActive), played in a project whose ports hold
+	# the device, ends on the native reference's RAM.
+	devfail=""
+	for ds in 'fourScore {"port1":"fourScore"}' 'zapper {"port2":"zapper"}' 'arkanoid {"port2":"arkanoid"}'; do
+		d="${ds%% *}"
+		python3 -I "$dev" movie "$d" "$work/$d.inputs" "$work/$d.movie.txt"
+		"$runner" --new-project "$work/dv.$d.chimeraProject" "$package" "$root/tests/roms/input-test.nes" "$work/$d.movie.txt" \
+			--settings "${ds#* }" > "$work/dv.$d.make.log" 2>&1
+		"$runner" --project "$work/dv.$d.chimeraProject" "$package" --files "$root/tests/roms" \
+			--dump "RAM=$work/dv.$d.ram" --meta "$work/dv.$d.meta" > "$work/dv.$d.log" 2>&1
+		f=$(sed -n 's/^frames=//p' "$work/dv.$d.meta" 2> /dev/null)
+		if [ "${f:-0}" != 240 ]; then
+			devfail="$devfail $d: ${f:-no} frames ($(tail -1 "$work/dv.$d.log"));"
+		elif ! cmp -s "$work/dv.$d.ram" "$work/$d.nat.ram"; then
+			devfail="$devfail $d: another RAM than native;"
+		fi
+	done
+	if [ -z "$devfail" ]; then
+		report "engine:devices" PASS "the Four Score, Zapper and Arkanoid schedules as Chimera movies end on the native reference's RAM"
+	else
+		report "engine:devices" FAIL "$devfail"
+	fi
 else
-	report "engine:*" SKIP "4 checks: need CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
+	report "engine:*" SKIP "5 checks: need CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
 fi
 
 echo ""
