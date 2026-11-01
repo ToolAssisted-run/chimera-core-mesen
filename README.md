@@ -43,7 +43,11 @@ keyboard** (99 keys), the Pachinko and Famicom Network System
 controllers, the Exciting Boxing bag, the Jissen Mahjong controller, the
 Hori Track and Bandai's Hyper Shot; Karaoke Studio's microphone; and the
 console model (NES, NES top-loader, Famicom, AV Famicom). The keyboards'
-keys are on the PC keyboard's keys. A **Game Boy Advance** game can
+keys are on the PC keyboard's keys. The Super NES also takes the **NTT
+Data Keypad** and the **BlueRetro adapter** (analog sticks and triggers);
+the tilt sensor of Game Boy and Game Boy Advance cartridges that have one
+is two axes; the Master System has a **Console Model** setting and the PC
+Engine CD a **CD-ROM Card** setting. A **Game Boy Advance** game can
 skip the console's boot screen (**Skip Boot Screen**, off by default as in
 Mesen); a game still needs the BIOS, which only programs made to call none
 of it can do without (**BIOS: None**).

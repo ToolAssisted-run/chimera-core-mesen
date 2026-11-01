@@ -9,7 +9,8 @@ Writes gb-test.gb (32 KiB, MBC1 with 8 KiB of battery-backed RAM). Its
 header says it runs on the Game Boy and, in colour, on the Game Boy Color,
 so the same file is the test of both machines. It also writes gb-rtc.gb,
 the same program on an MBC3 cartridge with a clock, which each frame also
-reads the clock (below).
+reads the clock, and gb-tilt.gb, the same program on an MBC7 cartridge
+(the one with a tilt sensor), which each frame reads the sensor (below).
 
 What the program does:
   - at power on it keeps the A register the boot program left in RAM $C002:
@@ -33,6 +34,13 @@ clock each frame (writes 0 then 1 to $6000), reads its five registers
 (seconds, minutes, hours, the day counter's low 8 bits, and its top bit
 with the halt and carry flags; RAM banks $08-$0C at $A000) into RAM
 $C010-$C014, and selects RAM bank 0 again.
+
+gb-tilt.gb (MBC7, 32 KiB) turns the sensor's registers on at power on
+($0A to $0000, $40 to $4000), keeps nothing in battery RAM (the MBC7 has
+an EEPROM, not RAM, there), and each frame resets the sensor's latch ($55
+to $A000), latches it ($AA to $A010) and reads its four bytes (X low and
+high at $A020 and $A030, Y low and high at $A040 and $A050) into RAM
+$C010-$C013.
 
 The 48 bytes at $0104-$0133 (the logo) are left zero: the boot program Mesen has of
 its own (SameBoy's) runs the game without Nintendo's logo, and this
@@ -74,12 +82,14 @@ class Asm:
         return self.out
 
 
-def program(rtc=False):
+def program(rtc=False, tilt=False):
     a = Asm(0x150)
     a.b(0xF3)                          # DI
     a.b(0xEA, 0x02, 0xC0)              # LD ($C002),A: the boot program's A, $01 or $11
     a.b(0x31, 0xFE, 0xFF)              # LD SP,$FFFE
     a.b(0x3E, 0x0A, 0xEA, 0x00, 0x00)  # LD A,$0A; LD ($0000),A: the cartridge RAM on
+    if tilt:
+        a.b(0x3E, 0x40, 0xEA, 0x00, 0x40)  # LD A,$40; LD ($4000),A: the MBC7's registers on
     a.label("wait0")
     a.b(0xF0, 0x44, 0xFE, 0x90)        # LDH A,(LY); CP 144
     a.jr(0x20, "wait0")                # JR NZ
@@ -116,8 +126,14 @@ def program(rtc=False):
             a.b(0x3E, 0x08 + i, 0xEA, 0x00, 0x40)  # LD A,$08+i; LD ($4000),A: register i
             a.b(0xFA, 0x00, 0xA0, 0xEA, 0x10 + i, 0xC0)  # LD A,($A000); LD ($C010+i),A
         a.b(0xAF, 0xEA, 0x00, 0x40)    # XOR A; LD ($4000),A: RAM bank 0 again
-    a.b(0x78, 0xEA, 0x00, 0xA0)        # battery RAM: the byte...
-    a.b(0xFA, 0x01, 0xC0, 0xEA, 0x01, 0xA0)  # ...and the frame count
+    if tilt:
+        a.b(0x3E, 0x55, 0xEA, 0x00, 0xA0)  # LD A,$55; LD ($A000),A: the latch reset
+        a.b(0x3E, 0xAA, 0xEA, 0x10, 0xA0)  # LD A,$AA; LD ($A010),A: latched
+        for i in range(4):
+            a.b(0xFA, 0x20 + 0x10 * i, 0xA0, 0xEA, 0x10 + i, 0xC0)  # LD A,($A0x0); LD ($C01x),A
+    else:
+        a.b(0x78, 0xEA, 0x00, 0xA0)        # battery RAM: the byte...
+        a.b(0xFA, 0x01, 0xC0, 0xEA, 0x01, 0xA0)  # ...and the frame count
     a.b(0x78, 0xE0, 0x47)              # BGP = the byte
     a.b(0x3E, 0x80, 0xE0, 0x68)        # BCPS: colour 0 of palette 0, counting up
     a.b(0x78, 0xE0, 0x69, 0xE6, 0x7F, 0xE0, 0x69)  # BCPD = the byte, the byte & $7F
@@ -126,25 +142,26 @@ def program(rtc=False):
     a.label("leave")
     a.b(0xF0, 0x44, 0xFE, 0x90)        # wait for the line to change
     a.jr(0x28, "leave")
-    if rtc:
+    if rtc or tilt:
         a.b(0xC3, a.labels["main"] & 0xFF, a.labels["main"] >> 8)  # JP main: too far for JR
     else:
         a.jr(0x18, "main")
     return a.resolve()
 
 
-def cart(rtc=False):
+def cart(rtc=False, tilt=False):
     rom = bytearray(0x8000)
     rom[0x100:0x104] = bytes([0x00, 0xC3, 0x50, 0x01])  # NOP; JP $0150
     rom[0x134:0x143] = b"CHIMERA MESEN".ljust(15, b"\0")
     rom[0x143] = 0x80   # runs on the Game Boy and, in colour, on the Game Boy Color
     rom[0x146] = 0x00
-    rom[0x147] = 0x10 if rtc else 0x03   # MBC3, clock, RAM, battery; or MBC1, RAM, battery
+    # MBC3, clock, RAM, battery; MBC7, its sensor and EEPROM; or MBC1, RAM, battery
+    rom[0x147] = 0x10 if rtc else 0x22 if tilt else 0x03
     rom[0x148] = 0x00   # 32 KiB
     rom[0x149] = 0x02   # 8 KiB of RAM
     rom[0x14A] = 0x01
     rom[0x14B] = 0x00
-    code = program(rtc)
+    code = program(rtc, tilt)
     rom[0x150:0x150 + len(code)] = code
     x = 0
     for i in range(0x134, 0x14D):
@@ -162,6 +179,8 @@ def main():
         f.write(cart())
     with open(os.path.join(sys.argv[1], "gb-rtc.gb"), "wb") as f:
         f.write(cart(rtc=True))
+    with open(os.path.join(sys.argv[1], "gb-tilt.gb"), "wb") as f:
+        f.write(cart(tilt=True))
 
 
 if __name__ == "__main__":

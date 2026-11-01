@@ -9,9 +9,14 @@ emulates (owner, 2026-10-31), as machines of the same package picked by
 the setting `machine`: the Super NES, Super Game Boy, Game Boy, Game Boy
 Color, Game Boy Advance, PC Engine, SuperGrafx, PC Engine CD, Master
 System, Game Gear, SG-1000, ColecoVision, WonderSwan, WonderSwan Color (or
-SwanCrystal) and Pocket Challenge V2. Mesen's other controllers (the Super
-NES Mouse and Super Scope, the Light Phaser, the Avenue Pad 6) are choices
-of the port settings (owner, 2026-11-01).
+SwanCrystal) and Pocket Challenge V2. Every other controller and model
+Mesen emulates is offered (owner, 2026-11-01): the Super NES Mouse, Super
+Scope, NTT Data Keypad and BlueRetro adapter, the Light Phaser, the Avenue
+Pad 6 and the NES's devices are choices of the port settings; the Game Boy
+and Game Boy Advance cartridges' tilt sensors are two axes; the NES's and
+Master System's console models and the PC Engine CD's card are settings.
+Devices that keep data outside the machine or read barcodes are left to
+the owner.
 `docs/BUILDING.md` has every step; `docs/PLAN.md` the reasons and the state
 of the work.
 
@@ -41,7 +46,10 @@ of the work.
   are `waterbox/tests/systems.sh` (sourced by it) with
   `waterbox/tests/systems.py` (their schedules, movies and RAM checks).
   `waterbox/tests/machine-devices.py` - the other machines' devices beyond
-  the pad: their schedules, movies and RAM checks. `waterbox/tests/nes-devices.sh`
+  the pad: their schedules, movies and RAM checks (`tilt.py`: what a tilt
+  sensor must give).
+  `sys_sms_model_leg` and `sys_pce_cd_type_leg` in `systems.sh` check the
+  Master System's model and the PC Engine CD's card. `waterbox/tests/nes-devices.sh`
   with `nes-devices.py` - the NES's devices added on 2026-11-01 (the
   keyboards among them) and its console types; `waterbox/tests/clocks.py`
   - what the cartridges' clocks must say.
@@ -63,12 +71,12 @@ MB=<chimera>/extern/chimera-common-minibox     # built with -Dguest_cpp=true in 
 git submodule update --init
 meson setup build/meson-native -Dminibox_dir="$MB" && ninja -C build/meson-native -j4
 sh waterbox/setup-guest.sh -m "$MB" && ninja -C build/meson-guest -j4
-./waterbox/run-gate.sh                                   # 192 ok, 0 failed, the engine and game checks skipped
+./waterbox/run-gate.sh                                   # 287 ok, 0 failed, the engine and game checks skipped
 ./waterbox/build-package.sh -m "$MB" -o build/Cores
 <chimera>/build/meson-linux/source/ui/test-packages build/Cores
-CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 224 ok, 0 failed (301 with every owner's file)
-./waterbox/tests/run-frontend.sh --chimera-root <chimera> [--qt-lib <Qt lib folder>]   # 32 ok (43 with the owner's files)
-python3 <chimera>/tools/check-core-texts.py .            # every key named (192)
+CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 328 ok, 0 failed (406 with every owner's file)
+./waterbox/tests/run-frontend.sh --chimera-root <chimera> [--qt-lib <Qt lib folder>]   # 45 ok (56 with the owner's files)
+python3 <chimera>/tools/check-core-texts.py .            # every key named (224)
 ```
 
 `MESEN_CONTENT_DIR=<folder>` holding the owner's NES games and BIOS files

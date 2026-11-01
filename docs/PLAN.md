@@ -1891,56 +1891,62 @@ What the next step took from this list is in the next section.
 - Still open from the sixth round: the BS-X BIOS (Satellaview) and the
   Sufami Turbo BIOS and a game for it.
 
-## Where this stands (2026-11-01)
+## Where this stands (2026-11-01, after the second round of devices)
 
 Works, and is tested here on Linux against Chimera main cb46d2b7
-(`~/chimera-scratch-bump`):
+(`~/chimera-scratch-bump`). Three commits are local and not pushed or
+published: Clock Start for every cartridge clock (85a4347), the NES's
+remaining devices, keyboards and console types (5a72422), and the other
+machines' remaining devices and models (the commit after them).
 
 - Everything the sixth round left; the NES machine is still the published
-  one (`nes:published`, `engine:nes-published`, against the published
-  commit rebuilt here).
-- New: the Game Boy Advance's **Skip Boot Screen** and **BIOS: None**
-  settings, and its test program, which runs on CI without a BIOS and
-  proves patch 0009 (`gba:rtc`).
-- New: the **Super NES Mouse** (either port) and **Super Scope** (port 2),
-  the Master System's **Light Phaser** (either port), the PC Engine's
-  **Avenue Pad 6** (in the port or the multitap), the **SwanCrystal** model
-  and the **Pocket Challenge V2** machine, each with a test program of this
-  repository's own, checks native == sandbox with savestates, through
-  chimera-run's movies and in the window, and its texts in 26 languages.
-  Arkanoid - Doh It Again plays with the mouse.
-- New in a second step: the NES's **Power Pad** (port 2, both sides) and,
-  on the expansion port, the **Family Trainer** mat (both sides), Konami's
-  **Hyper Shot** and the **Party Tap**, read by the NES input test program.
-- Counts: `run-gate.sh` 192 / 224 / 301 ok (neither Chimera nor the
-  owner's files / Chimera / everything; only FamiStudio's checks skipped),
-  `run-frontend.sh` 32 / 43 ok, `test-packages` PASS, 192 text keys.
+  one (`nes:published`, `engine:nes-published`, against Nightly 2026-11-01,
+  2b7d3881).
+- The Game Boy Advance's **Skip Boot Screen** and **BIOS: None**, its test
+  program, and patch 0009 proved (`gba:rtc`).
+- The **Super NES Mouse** and **Super Scope**, the **Light Phaser**, the
+  **Avenue Pad 6**, the **SwanCrystal** and the **Pocket Challenge V2**;
+  the NES's **Power Pad**, **Family Trainer**, Konami's **Hyper Shot** and
+  the **Party Tap**.
+- Every cartridge clock starts at **Clock Start** (patch 0013): the
+  S-3511A, the SPC7110's RTC-4513 and the Game Boy's MBC3.
+- Every other NES device Mesen has (the keyboards, the mice, the Virtual
+  Boy controller, the NTT Data Keypad and the rest) and the NES's
+  **Console Model**.
+- The Super NES's **NTT Data Keypad** (either port) and **BlueRetro
+  adapter** (port 1), the **tilt sensors** of Game Boy MBC7 cartridges and
+  of the two Game Boy Advance games Mesen gives one, the Master System's
+  **Console Model** and the PC Engine CD's **CD-ROM Card**.
+- Each is read by a test program of this repository's own, checked native
+  == sandbox with savestates, through chimera-run's movies and in the
+  window, and seen to fail when broken; its texts are in 26 languages.
+- Counts: `run-gate.sh` 287 / 328 / 406 ok (neither Chimera
+  nor the owner's files / Chimera / everything; only FamiStudio's checks
+  skipped), `run-frontend.sh` 45 / 56 ok, `test-packages` PASS, 224
+  text keys.
 
 Not done, or not proved:
 
-- The controllers and models of the list above, less the four NES
-  devices of the second step: the Subor mouse, the Virtual Boy controller,
-  Bandai's Hyper Shot, the Oeka Kids tablet, the Pachinko controller, the
-  Exciting Boxing bag, the Jissen Mahjong controller, the Hori Track, the
-  two-player adapter, the FCNS controller, the two keyboards, the Barcode
-  Battler, the Turbo Files and Battle Box, the Bandai microphone and Datach
-  reader, the NES console types, the Super NES NTT Data Keypad and rumble
-  pads, the Game Boy's and Game Boy Advance's tilt sensors, the Master
-  System's revisions and the PC Engine CD's CD-ROM types. Most need a test
-  program that talks their protocol (the input test program only strobes
-  and reads); the keyboards add 72 and 99 keys to the NES's wire, a size
-  worth the owner's word first.
+- Left to the owner: the devices that keep data outside the machine or
+  read barcodes (the Family BASIC data recorder, ASCII's Turbo File and
+  Turbo File Twin, the Battle Box, the Barcode Battler, the Datach reader),
+  and the VS System's coin slots and DIP switches.
+- Not offered: the Super NES rumble controller (to a game it is a pad; its
+  rumble would go to the host's gamepad). Port arrangements Mesen allows
+  beyond the ones offered (the Super Scope in port 1, mice or a Super
+  Scope in the multitap, devices other than pads in the NES two-player
+  adapter's places).
 - No owner's game uses the Super Scope, the Light Phaser, the Avenue Pad 6,
-  the SwanCrystal or the Pocket Challenge V2; they are proved on this
-  repository's programs only. Lemmings did not answer the mouse in the runs
+  the SwanCrystal, the Pocket Challenge V2, any of the NES's new devices,
+  the keypad, the BlueRetro adapter or a tilt sensor; they are proved on
+  this repository's programs only. No owner's Master System game was run
+  on the new revisions. Lemmings did not answer the mouse in the runs
   tried.
 - A Super NES game in its 512-pixel wide mode: the Super Scope's place is
-  turned into the 256-pixel picture's pixels (Mesen's UI would give twice
-  as many). The Light Phaser on a PAL Master System and in the 224- and
-  240-line modes was not tried.
-- Clock Start does not reach the S-3511A (question above).
-- The Satellaview and the Sufami Turbo, as before. No Windows run of this
-  round; CI has not run it.
+  turned into the 256-pixel picture's pixels. The Light Phaser on a PAL
+  Master System and in the 224- and 240-line modes was not tried.
+- The Satellaview and the Sufami Turbo, as before. No Windows run of the
+  three local commits; CI has not run them.
 
 ## 2026-11-01: the Power Pad, the Family Trainer, Konami's Hyper Shot and the Party Tap
 
@@ -2325,3 +2331,111 @@ callback 0 times). `dev:suborMouse1` and `2` passed at first with the
 mice's X and Y swapped: the schedule's last frame moved past the Subor
 mouse's limit of 31 both ways and in the same direction; the last frame
 now moves -5 and 6, and both failed then.
+
+## 2026-11-01: the other machines' remaining devices and models
+
+What MesenCE has for the other machines that the package did not offer,
+from the same source (`ControllerType`, the model enums, each console's
+control manager and `UI/ViewModels/SnesInputConfigViewModel.cs`):
+
+| Machine | Device or model | Now |
+| --- | --- | --- |
+| Super NES, Super Game Boy | the NTT Data Keypad (either port) | offered: `snesPort1`/`snesPort2` `nttKeypad`; P1 and P2 Keypad 0 to 9, *, #, ., C and End |
+| Super NES, Super Game Boy | the BlueRetro adapter (port 1, as in Mesen's UI): a pad with analog sticks and triggers for new homebrew | offered: `snesPort1` `blueRetro`; axes P1 Left Stick X and Y, P1 Right Stick X and Y (-32768 to 32767), P1 Left and Right Trigger (0 to 255) |
+| Super NES | the rumble controller | not offered: to the game it is a pad (it reads the same 16 bits); its rumble goes to the host's gamepad, which Chimera has no way to drive |
+| Super NES | ASCII's Turbo File Twin (port 2) | not offered: it keeps data outside the machine (a question for the owner) |
+| Game Boy, Game Boy Color | the tilt sensor of MBC7 cartridges (Kirby Tilt 'n' Tumble) | offered: axes P1 Tilt X and Y, the machine's when the cartridge has the sensor |
+| Game Boy Advance | the tilt sensor Mesen gives two games by their codes (KYGE, KHPJ) | offered: the same axes |
+| Master System | the revision (Mesen's Compatibility, the Master System 1, the Master System 2) | offered: Console Model (`smsModel`), Compatibility by default as before |
+| PC Engine CD | the CD unit's card (Arcade Card, Super CD-ROM System, CD-ROM System) | offered: CD-ROM Card (`pceCdType`), the Arcade Card by default as before |
+
+Port arrangements Mesen's UI allows and the package does not: the Super
+Scope in port 1, a mouse or Super Scope in the multitap's places, and the
+NES two-player adapter's places holding anything but a pad (Mesen lets them
+hold the Pachinko, FCNS, Subor mouse and other devices). The devices are
+offered, in the ports where their games use them.
+
+How they reach Mesen:
+
+- the keypad: a Super NES controller's bits and the keypad's (Mesen's
+  `SnesNttDataKeypad`, the same enum order), from the wire;
+- the BlueRetro adapter: Mesen reads its sticks and triggers from the host
+  through `KeyManager` by gamepad names ("Pad1 LT X" ...). The core gives
+  KeyManager a key manager of its own (`ChimeraKeys`) that answers those
+  six names with the project's axes, and the settings it needs, only for a
+  Super NES with the adapter in port 1; no other machine has a key manager,
+  as before. Mesen reads the axes at the strobe, so a game reads the
+  frame's own sticks (its buttons, as every device's, the frame before's);
+- the tilt sensors: their value is the device's movement, which the core
+  sets each frame from the axes (`GbMbc7Accelerometer`, `GbaTiltSensor`
+  latch it when the game asks);
+- the revision and the card: Mesen's settings, read from the project.
+
+The test programs: `snes-devices.sfc` already read 16 more bits of each
+port (the keypad's second half); `snes-blueretro.sfc` (new) sends the
+adapter its mode command at power on, one bit at a time on port 1's I/O
+line, and reads its 64 bits; `gb-tilt.gb` (an MBC7 cartridge) and
+`gba-tilt.gba` (game code KYGE, an EEPROM's marker and no SRAM: Mesen
+reaches the sensor only on a cartridge with no SRAM, and takes one with no
+marker to have SRAM) read their sensors every frame; `sms-model.sms` reads
+port $3E and draws black tiles in the name table's first 16 rows and white
+ones in the last 8. The PC Engine CD's check uses a disc made at test time.
+
+Checks (`waterbox/tests/systems.sh`):
+
+- `nttKeypadSnes1`, `nttKeypadSnes2`, `blueRetro`, `gbTilt`, `gbaTilt`
+  (`machine-devices.py`): `:equivalence` (240 frames moving every control,
+  native == sandbox), `:input` (the RAM holds what the device answers: the
+  keypad's 32 bits, the adapter's 64 in its mode 1, the sensor's bytes as
+  Mesen's sums give them; with plain pads in its place, or for a tilt
+  sensor with it level, the program reads otherwise), `:buttons` (the
+  keypad's fifteen keys each alone), `:savestate`, `:session`; and
+  `engine:<device>` through chimera-run (movie, RAM, input polls);
+- `sms:model`: the bottom third of the picture and port $3E: black and
+  $FF in Compatibility, black and $3E (the bus's last byte) on the Master
+  System 1, white and $FF on the Master System 2;
+- `pcecd:card-type` (with the owner's System Card; SKIP without): the
+  Arcade Card's machine has card RAM and the Arcade Card's memory, the
+  Super CD-ROM System's card RAM only, the CD-ROM System's neither.
+
+In the window: `nttKeypadSnes:frontend`, `blueRetro:frontend`,
+`gbTilt:frontend`, `gbaTilt:frontend`.
+
+None of the owner's files uses the keypad, the adapter or a tilt sensor;
+no game was tried with them. No owner's Master System game was run on the
+new revisions.
+
+One letter changed beside them: the keypad's "." is written `d` in a
+movie on both machines (the NES's was `p`, unpublished; on the Super NES
+`p` is player 2's Super Scope Pause, and one key should have one letter
+on every machine).
+
+### Measured
+
+Against Chimera main cb46d2b7 (`~/chimera-scratch-bump`), with the owner's
+files and the published package (Nightly 2026-11-01, 2b7d3881, as
+`MESEN_PUBLISHED_PACKAGE`): `run-gate.sh` 406 ok, 0 failed (377 before: 29
+new), only FamiStudio's checks skipped; `nes:published` and
+`engine:nes-published` pass. Without the owner's files 328 ok;
+without Chimera either 287 ok. `run-frontend.sh` 56 ok (52 before;
+45 without the owner's files). `test-packages` PASS (0 failed) on a
+folder holding only the package; `check-core-texts.py` 224 keys;
+`check-names.py` 0 in 26 tables; `check-proper-nouns.py` 0. The test
+programs written again by their generators are the same bytes as the ones
+in `tests/roms`.
+
+### Seen to fail
+
+The adapter built broken on purpose in five places (the keypad's keys
+never set, the adapter's sticks and triggers never answered, the tilt
+never given to the sensor, the Master System's revision and the CD card
+always the default): failed `nttKeypadSnes1:input` and `:buttons`,
+`nttKeypadSnes2:input` and `:buttons`, `blueRetro:input`, `gbTilt:input`,
+`gbaTilt:input`, `sms:model` (`$FF` and black for all three),
+`pcecd:card-type` (both memories for all three cards), the five
+`engine:<device>` checks, and in the window `nttKeypadSnes:frontend`,
+`blueRetro:frontend`, `gbTilt:frontend` and `gbaTilt:frontend`. The
+`:equivalence`, `:savestate` and `:session` checks pass on a broken
+build, as they should: they compare the two builds with each other. The
+package built again from the restored source has the same SHA-1 as the
+one tested (9157828e).

@@ -300,7 +300,22 @@
       "P2 Super Scope Turbo": "T",
       "P2 Super Scope Pause": "P",
       "P2 Mouse Left": "WMouse L",
-      "P2 Mouse Right": "WMouse R"
+      "P2 Mouse Right": "WMouse R",
+      "P1 Keypad 0": "Keypad0",
+      "P1 Keypad 1": "Keypad1",
+      "P1 Keypad 2": "Keypad2",
+      "P1 Keypad 3": "Keypad3",
+      "P1 Keypad 4": "Keypad4",
+      "P1 Keypad 5": "Keypad5",
+      "P1 Keypad 6": "Keypad6",
+      "P1 Keypad 7": "Keypad7",
+      "P1 Keypad 8": "Keypad8",
+      "P1 Keypad 9": "Keypad9",
+      "P1 Keypad *": "KeypadMultiply",
+      "P1 Keypad #": "KeypadDivide",
+      "P1 Keypad .": "KeypadDecimal",
+      "P1 Keypad C": "KeypadSubtract",
+      "P1 Keypad End": "KeypadEnter"
     },
     "Game Boy Controls": {
       "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
@@ -520,6 +535,36 @@
         "Value": "WMouse Y",
         "Mult": 1.0,
         "Deadzone": 0.0
+      },
+      "P1 Left Stick X": {
+        "Value": "X1 LeftThumbX Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P1 Left Stick Y": {
+        "Value": "X1 LeftThumbY Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P1 Right Stick X": {
+        "Value": "X1 RightThumbX Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P1 Right Stick Y": {
+        "Value": "X1 RightThumbY Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P1 Left Trigger": {
+        "Value": "X1 LeftTrigger Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P1 Right Trigger": {
+        "Value": "X1 RightTrigger Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.0
       }
     },
     "Master System Controller": {
@@ -540,6 +585,30 @@
       },
       "P2 Light Phaser Y": {
         "Value": "WMouse Y",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      }
+    },
+    "Game Boy Controls": {
+      "P1 Tilt X": {
+        "Value": "X1 RightThumbX Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P1 Tilt Y": {
+        "Value": "X1 RightThumbY Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      }
+    },
+    "Game Boy Advance Controls": {
+      "P1 Tilt X": {
+        "Value": "X1 RightThumbX Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P1 Tilt Y": {
+        "Value": "X1 RightThumbY Axis",
         "Mult": 1.0,
         "Deadzone": 0.0
       }

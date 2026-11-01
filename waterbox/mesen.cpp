@@ -78,6 +78,9 @@
 #include "SMS/Input/SmsLightPhaser.h"
 #include "SNES/Input/SnesMouse.h"
 #include "SNES/Input/SnesNttDataKeypad.h"
+#include "SNES/Input/SnesBlueRetroController.h"
+#include "Shared/KeyManager.h"
+#include "Shared/Interfaces/IKeyManager.h"
 #include "SNES/Input/SuperScope.h"
 #include "PCE/Input/PceAvenuePad6.h"
 #include "WS/Input/Pcv2Controller.h"
@@ -319,7 +322,10 @@ static const PadLayout kLayouts[M_COUNT] = {
  *     each of the five players. */
 enum {
 	SNES_X_MOUSE1_LEFT, SNES_X_MOUSE1_RIGHT, SNES_X_MOUSE2_LEFT, SNES_X_MOUSE2_RIGHT,
-	SNES_X_SCOPE_FIRE, SNES_X_SCOPE_CURSOR, SNES_X_SCOPE_TURBO, SNES_X_SCOPE_PAUSE, SNES_X_COUNT
+	SNES_X_SCOPE_FIRE, SNES_X_SCOPE_CURSOR, SNES_X_SCOPE_TURBO, SNES_X_SCOPE_PAUSE,
+	/* (2026-11-01, second round) the NTT Data Keypad's keys 0 to 9, *, #,
+	 * ., C and End: port 1's, then port 2's */
+	SNES_X_P1_KEYPAD, SNES_X_P2_KEYPAD = SNES_X_P1_KEYPAD + 15, SNES_X_COUNT = SNES_X_P2_KEYPAD + 15
 };
 enum { SMS_X_TRIGGER1, SMS_X_TRIGGER2, SMS_X_COUNT };
 #define PCE_X_PER_PLAYER 4
@@ -342,7 +348,14 @@ static int extra_button(int i)
 {
 	return g_buttons[extra_base() + i] != 0;
 }
-enum { SNES_AXIS_MOUSE1_X, SNES_AXIS_MOUSE1_Y, SNES_AXIS_MOUSE2_X, SNES_AXIS_MOUSE2_Y, SNES_AXIS_SCOPE_X, SNES_AXIS_SCOPE_Y };
+enum { SNES_AXIS_MOUSE1_X, SNES_AXIS_MOUSE1_Y, SNES_AXIS_MOUSE2_X, SNES_AXIS_MOUSE2_Y, SNES_AXIS_SCOPE_X, SNES_AXIS_SCOPE_Y,
+	/* (2026-11-01, second round) the BlueRetro adapter's left stick's X and
+	 * Y, right stick's X and Y (-32768..32767), left and right triggers
+	 * (0..255), in port 1 */
+	SNES_AXIS_BR_LX, SNES_AXIS_BR_LY, SNES_AXIS_BR_RX, SNES_AXIS_BR_RY, SNES_AXIS_BR_AL, SNES_AXIS_BR_AR };
+/* the Game Boy's and Game Boy Advance's: a cartridge's tilt sensor, X and Y
+ * (-32768..32767, as a joystick's axis) */
+enum { GB_AXIS_TILT_X, GB_AXIS_TILT_Y };
 enum { SMS_AXIS_PHASER1_X, SMS_AXIS_PHASER1_Y, SMS_AXIS_PHASER2_X, SMS_AXIS_PHASER2_Y };
 static int wire_count(void)
 {
@@ -352,7 +365,8 @@ static int wire_count(void)
 }
 
 /* what the other machines' ports hold */
-enum { SNES_PORT_NONE, SNES_PORT_GAMEPAD, SNES_PORT_MULTITAP, SNES_PORT_MOUSE, SNES_PORT_SCOPE };
+enum { SNES_PORT_NONE, SNES_PORT_GAMEPAD, SNES_PORT_MULTITAP, SNES_PORT_MOUSE, SNES_PORT_SCOPE, SNES_PORT_NTT_KEYPAD,
+	SNES_PORT_BLUE_RETRO };
 enum { PCE_PORT_GAMEPAD, PCE_PORT_NONE, PCE_PORT_MULTITAP };
 enum { SMS_PORT_NONE, SMS_PORT_GAMEPAD, SMS_PORT_PHASER };
 static int g_snesPort1 = SNES_PORT_GAMEPAD, g_snesPort2 = SNES_PORT_GAMEPAD;
@@ -804,6 +818,33 @@ public:
 				return false;
 			set_machine_pad(device, port);
 			return true;
+		case ControllerType::SnesNttDataKeypad:
+			/* a Super NES controller (the same bits) and the keypad's keys,
+			 * bits Num0 (12) to EndCommunication (26) */
+			if (port < 0 || port > 1)
+				return false;
+			set_machine_pad(device, port);
+			for (int i = 0; i < 15; i++)
+				device->SetBitValue((uint8_t)(SnesNttDataKeypad::Num0 + i),
+					extra_button((port ? SNES_X_P2_KEYPAD : SNES_X_P1_KEYPAD) + i));
+			return true;
+		case ControllerType::SnesBlueRetroController:
+			/* a pad; its sticks and triggers Mesen reads from the host through
+			 * KeyManager (ChimeraKeys below) */
+			if (port != 0)
+				return false;
+			set_machine_pad(device, 0);
+			return true;
+		case ControllerType::GameboyAccelerometer:
+			/* the tilt: Mesen's sensors take the frame's value as a movement
+			 * (BaseControlDevice::GetMovement) when the game latches them */
+			{
+				MousePosition tilt;
+				tilt.X = (int16_t)g_axes[GB_AXIS_TILT_X];
+				tilt.Y = (int16_t)g_axes[GB_AXIS_TILT_Y];
+				device->SetCoordinates(tilt);
+			}
+			return true;
 		case ControllerType::GameboyController:
 		case ControllerType::GbaController:
 		case ControllerType::PceController:
@@ -822,6 +863,40 @@ public:
 			return false;
 		}
 	}
+};
+
+/* What Mesen's BlueRetro adapter reads of the host (SnesBlueRetroController
+ * asks KeyManager for a gamepad's sticks and triggers by name): the
+ * project's axes, under the first names it asks for. No key and no mouse
+ * button is ever pressed here. Registered only for a Super NES with the
+ * adapter in port 1, so every other machine is as it was. */
+class ChimeraKeys : public IKeyManager
+{
+public:
+	void RefreshState() override {}
+	void UpdateDevices() override {}
+	bool IsMouseButtonPressed(MouseButton) override { return false; }
+	bool IsKeyPressed(uint16_t) override { return false; }
+	optional<int16_t> GetAxisPosition(uint16_t keyCode) override
+	{
+		if (keyCode < 1 || keyCode > 6)
+			return std::nullopt;
+		int32_t v = g_axes[SNES_AXIS_BR_LX + keyCode - 1];
+		return (int16_t)(v < -32768 ? -32768 : v > 32767 ? 32767 : v);
+	}
+	vector<uint16_t> GetPressedKeys() override { return {}; }
+	string GetKeyName(uint16_t) override { return ""; }
+	uint16_t GetKeyCode(string name) override
+	{
+		static const char *const names[] = { "Pad1 LT X", "Pad1 LT Y", "Pad1 RT X", "Pad1 RT Y", "Pad1 AL", "Pad1 AR" };
+		for (int i = 0; i < 6; i++)
+			if (name == names[i])
+				return (uint16_t)(i + 1);
+		return 0;
+	}
+	bool SetKeyState(uint16_t, bool) override { return false; }
+	void ResetKeyState() override {}
+	void SetDisabled(bool) override {}
 };
 
 class ChimeraAudio : public IAudioDevice
@@ -1049,7 +1124,7 @@ static int gba_no_bios(void)
  * drawn after frames that were not would not be the frame's own picture. */
 static void configure_other(EmuSettings *s)
 {
-	static const char *const snesPorts[] = { "none", "gamepad", "multitap", "mouse", "superScope" };
+	static const char *const snesPorts[] = { "none", "gamepad", "multitap", "mouse", "superScope", "nttKeypad", "blueRetro" };
 	static const char *const smsPorts[] = { "none", "gamepad", "lightPhaser" };
 	static const char *const pcePorts[] = { "gamepad", "none", "multitap" };
 	static const char *const regions3[] = { "auto", "ntsc", "pal" };
@@ -1058,12 +1133,16 @@ static void configure_other(EmuSettings *s)
 	SnesConfig snes = s->GetSnesConfig();
 	/* port 1: a pad, nothing or the mouse; port 2 also the multitap and the
 	 * Super Scope (which is made for port 2) */
-	g_snesPort1 = setting_choice("snesPort1", snesPorts, 5, SNES_PORT_GAMEPAD);
+	g_snesPort1 = setting_choice("snesPort1", snesPorts, 7, SNES_PORT_GAMEPAD);
 	if (g_snesPort1 == SNES_PORT_MULTITAP || g_snesPort1 == SNES_PORT_SCOPE)
 		g_snesPort1 = SNES_PORT_GAMEPAD;
-	g_snesPort2 = setting_choice("snesPort2", snesPorts, 5, SNES_PORT_GAMEPAD);
+	/* the BlueRetro adapter is port 1's only, as in Mesen's UI */
+	g_snesPort2 = setting_choice("snesPort2", snesPorts, 7, SNES_PORT_GAMEPAD);
+	if (g_snesPort2 == SNES_PORT_BLUE_RETRO)
+		g_snesPort2 = SNES_PORT_GAMEPAD;
 	static const ControllerType snesTypes[] = { ControllerType::None, ControllerType::SnesController,
-		ControllerType::Multitap, ControllerType::SnesMouse, ControllerType::SuperScope };
+		ControllerType::Multitap, ControllerType::SnesMouse, ControllerType::SuperScope, ControllerType::SnesNttDataKeypad,
+		ControllerType::SnesBlueRetroController };
 	snes.Port1.Type = snesTypes[g_snesPort1];
 	snes.Port2.Type = snesTypes[g_snesPort2];
 	for (int i = 0; i < 4; i++) {
@@ -1133,7 +1212,11 @@ static void configure_other(EmuSettings *s)
 	static const char *const pceModels[] = { "auto", "pcengine", "turbografx" };
 	static const PceConsoleType pceModelValues[] = { PceConsoleType::Auto, PceConsoleType::PcEngine, PceConsoleType::TurboGrafx };
 	pce.ConsoleType = g_machine == M_SGX ? PceConsoleType::SuperGrafx : pceModelValues[setting_choice("pceModel", pceModels, 3, 0)];
-	pce.CdRomType = PceCdRomType::Arcade;
+	/* the CD unit's card: the Arcade Card (the default, which plays every
+	 * disc), the Super CD-ROM System, or the first CD-ROM System */
+	static const char *const cdTypes[] = { "arcade", "superCdRom", "cdRom" };
+	static const PceCdRomType cdTypeValues[] = { PceCdRomType::Arcade, PceCdRomType::SuperCdRom, PceCdRomType::CdRom };
+	pce.CdRomType = cdTypeValues[setting_choice("pceCdType", cdTypes, 3, 0)];
 	pce.EnableCdRomForHuCardGames = false;
 	pce.DisableCdRomSaveRamForHuCardGames = false;
 	pce.PreventSelectRunReset = true; /* the UI's default */
@@ -1173,7 +1256,11 @@ static void configure_other(EmuSettings *s)
 	sms.Region = region3Values[setting_choice("smsRegion", regions3, 3, 0)];
 	sms.GameGearRegion = ConsoleRegion::Auto;
 	sms.RamPowerOnState = ram_state(2);
-	sms.Revision = SmsRevision::Compatibility;
+	/* Mesen's Compatibility (its default: the first Master System's video
+	 * chip with the second's display modes), the Master System 1 or 2 */
+	static const char *const smsModels[] = { "compatibility", "sms1", "sms2" };
+	static const SmsRevision smsModelValues[] = { SmsRevision::Compatibility, SmsRevision::Sms1, SmsRevision::Sms2 };
+	sms.Revision = smsModelValues[setting_choice("smsModel", smsModels, 3, 0)];
 	sms.AllowInvalidInput = false;
 	sms.UseSgPalette = true;
 	sms.GgBlendFrames = false;
@@ -1626,6 +1713,9 @@ ECL_EXPORT int Init(void)
 		static const int32_t snesNeutral[AXIS_COUNT] = { 0, 0, 0, 0, 32768, 32768 };
 		for (int i = 0; i < AXIS_COUNT; i++)
 			g_axes[i] = g_machine == M_SNES || g_machine == M_SGB ? snesNeutral[i] : 32768;
+		/* a tilt sensor rests level */
+		if (g_machine == M_GB || g_machine == M_GBC || g_machine == M_GBA)
+			g_axes[GB_AXIS_TILT_X] = g_axes[GB_AXIS_TILT_Y] = 0;
 	}
 
 	/* the sequence Mesen's "random" draws from; the seed is a setting, so a
@@ -1657,6 +1747,12 @@ ECL_EXPORT int Init(void)
 	g_emu = new Emulator();
 	g_emu->Initialize(false);
 	configure(g_emu->GetSettings());
+	/* the BlueRetro adapter reads its sticks through KeyManager, which needs
+	 * the settings (Mesen's UI gives them) and a key manager: ChimeraKeys */
+	if ((g_machine == M_SNES || g_machine == M_SGB) && g_snesPort1 == SNES_PORT_BLUE_RETRO) {
+		KeyManager::SetSettings(g_emu->GetSettings());
+		KeyManager::RegisterKeyManager(new ChimeraKeys());
+	}
 	/* every folder Mesen asks for is the guest's root, where the frontend
 	 * mounts a firmware file under its id. After configure(): setting the
 	 * preferences sets the overrides again, the firmware one to nothing. */
@@ -1924,9 +2020,11 @@ static int machine_player_active(int player)
 	switch (g_machine) {
 	case M_SNES: case M_SGB:
 		if (player == 0)
-			return g_snesPort1 == SNES_PORT_GAMEPAD;
+			return g_snesPort1 == SNES_PORT_GAMEPAD || g_snesPort1 == SNES_PORT_NTT_KEYPAD
+				|| g_snesPort1 == SNES_PORT_BLUE_RETRO;
 		if (player == 1)
-			return g_snesPort2 == SNES_PORT_GAMEPAD || g_snesPort2 == SNES_PORT_MULTITAP;
+			return g_snesPort2 == SNES_PORT_GAMEPAD || g_snesPort2 == SNES_PORT_MULTITAP
+				|| g_snesPort2 == SNES_PORT_NTT_KEYPAD;
 		return g_snesPort2 == SNES_PORT_MULTITAP;
 	case M_PCE: case M_SGX: case M_PCECD:
 		return player == 0 ? g_pcePort != PCE_PORT_NONE : g_pcePort == PCE_PORT_MULTITAP;
@@ -1946,7 +2044,11 @@ static int extra_active(int i)
 			return g_snesPort1 == SNES_PORT_MOUSE;
 		if (i <= SNES_X_MOUSE2_RIGHT)
 			return g_snesPort2 == SNES_PORT_MOUSE;
-		return g_snesPort2 == SNES_PORT_SCOPE;
+		if (i < SNES_X_P1_KEYPAD)
+			return g_snesPort2 == SNES_PORT_SCOPE;
+		if (i < SNES_X_P2_KEYPAD)
+			return g_snesPort1 == SNES_PORT_NTT_KEYPAD;
+		return g_snesPort2 == SNES_PORT_NTT_KEYPAD;
 	case M_SMS:
 		return (i == SMS_X_TRIGGER1 ? g_smsPort1 : g_smsPort2) == SMS_PORT_PHASER;
 	case M_PCE: case M_SGX: case M_PCECD:
@@ -2060,7 +2162,17 @@ ECL_EXPORT int IsAxisActive(int32_t index)
 			return g_snesPort2 == SNES_PORT_MOUSE;
 		if (index == SNES_AXIS_SCOPE_X || index == SNES_AXIS_SCOPE_Y)
 			return g_snesPort2 == SNES_PORT_SCOPE;
+		if (index >= SNES_AXIS_BR_LX && index <= SNES_AXIS_BR_AR)
+			return g_snesPort1 == SNES_PORT_BLUE_RETRO;
 		return 0;
+	}
+	if (g_machine == M_GB || g_machine == M_GBC || g_machine == M_GBA) {
+		/* a tilt sensor's, when the cartridge has one (an MBC7 cartridge, or
+		 * a Game Boy Advance game Mesen gives one by its code) */
+		BaseControlManager *cm = g_emu != nullptr && g_emu->GetConsoleUnsafe() != nullptr
+			? g_emu->GetConsoleUnsafe()->GetControlManager() : nullptr;
+		return (index == GB_AXIS_TILT_X || index == GB_AXIS_TILT_Y) && cm != nullptr
+			&& cm->HasControlDevice(ControllerType::GameboyAccelerometer);
 	}
 	if (g_machine == M_SMS) {
 		if (index == SMS_AXIS_PHASER1_X || index == SMS_AXIS_PHASER1_Y)

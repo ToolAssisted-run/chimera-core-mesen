@@ -35,6 +35,13 @@ What the program does:
   - it writes the frame count and pad 1's two bytes into its battery RAM
     ($70:0000-$70:0002), so a saved game holds them.
 
+snes-blueretro.sfc is the program for the BlueRetro adapter in port 1 (a
+pad with analog sticks and triggers): at power on it sends the adapter its
+mode command, $62 then 1, one bit at a time on port 1's I/O line ($4201 bit
+6) with a read of $4016 for each; each frame, after the automatic read, it
+reads 48 more bits of port 1 by hand into RAM $40-$6F (the sticks' and the
+triggers' bytes).
+
 snes-devices.sfc reads the ports for the mouse and the Super Scope
 instead of the multitap: after the automatic read (the first 16 bits of each
 port, at $10-$17 as above) it reads 16 more bits by hand from each port,
@@ -96,7 +103,7 @@ def hi(v):
     return (v >> 8) & 0xFF
 
 
-def program(dsp_test, devices=False, rtc=False):
+def program(dsp_test, devices=False, rtc=False, blueretro=False):
     a = Asm(0x8000)
     a.label("reset")
     a.b(0x78)                      # SEI
@@ -117,6 +124,15 @@ def program(dsp_test, devices=False, rtc=False):
     for reg in (0x212C, 0x212D, 0x2130, 0x2131):
         a.b(0x9C, lo(reg), hi(reg))  # no layer on either screen, no colour maths
     a.b(0xA9, 0x80, 0x8D, 0x01, 0x42)  # $4201 = $80: the I/O line high
+    if blueretro:
+        # the BlueRetro adapter's mode command, $62 then mode 1: sixteen bits,
+        # highest first, each put on port 1's I/O line ($4201 bit 6) and
+        # taken by a read of $4016
+        for i in range(15, -1, -1):
+            bit = (0x6201 >> i) & 1
+            a.b(0xA9, 0xC0 if bit else 0x80, 0x8D, 0x01, 0x42)  # LDA; STA $4201
+            a.b(0xAD, 0x16, 0x40)                              # LDA $4016
+        a.b(0xA9, 0x80, 0x8D, 0x01, 0x42)
     if dsp_test:
         # the DSP-1's multiply: command 0x00, then K and I, 16 bits each,
         # low byte first; then the answer's two bytes. Each byte waits for
@@ -157,7 +173,15 @@ def program(dsp_test, devices=False, rtc=False):
     a.b(0xBD, 0x18, 0x42, 0x95, 0x10)  # LDA $4218,X; STA $10,X
     a.b(0xE8, 0xE0, 0x08)          # INX; CPX #8
     a.br(0xD0, "copy")
-    if devices:
+    if blueretro:
+        # 48 more bits from port 1 (the adapter's 64), after the automatic
+        # read's 16: RAM $40-$6F
+        a.b(0xA2, 0x00)
+        a.label("more48")
+        a.b(0xAD, 0x16, 0x40, 0x95, 0x40)  # LDA $4016; STA $40,X
+        a.b(0xE8, 0xE0, 0x30)              # INX; CPX #48
+        a.br(0xD0, "more48")
+    elif devices:
         # 16 more bits from each port, after the automatic read's 16
         a.b(0xA2, 0x00)
         a.label("more")
@@ -216,12 +240,14 @@ CARTS = {
     "snes-st011": ("2DAN MORITA SHOUGI", 0xF5, 0x01),
     "snes-st018": ("CHIMERA ST018 TEST", 0xF5, 0x02),
     "snes-rtc": ("CHIMERA RTC TEST", 0xF9, 0x00),
+    "snes-blueretro": ("CHIMERA BLUERETRO", 0x02, 0x00),
 }
 
 
 def cart(name):
     title, rom_type, cart_type = CARTS[name]
-    code, labels = program(name in ("snes-dsp1", "snes-dsp1b"), name == "snes-devices", name == "snes-rtc")
+    code, labels = program(name in ("snes-dsp1", "snes-dsp1b"), name == "snes-devices", name == "snes-rtc",
+                           name == "snes-blueretro")
     rom = bytearray(0x8000)
     rom[0:len(code)] = code
     if isinstance(title, str):

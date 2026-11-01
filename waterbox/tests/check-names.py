@@ -50,7 +50,8 @@ NAMES = ["Mesen", "MesenCE", "NES", "iNES", "NES 2.0", "UNIF", "Famicom", "Ninte
          # the remaining devices and the NES's models (2026-11-01, second round)
          "Subor", "Virtual Boy", "NTT Data Keypad", "Oeka Kids", "Family BASIC", "Pachinko",
          "Famicom Network System", "Exciting Boxing", "Jissen Mahjong", "Hori Track", "NES-001", "NES-101",
-         "HVC-001", "HVC-101", "AV Famicom",
+         "HVC-001", "HVC-101", "AV Famicom", "BlueRetro", "Arcade Card", "CD-ROM System", "Master System 1",
+         "Master System 2",
          "Chimera", "TAStudio", "GitHub", "Lua", "Windows", "Linux", "macOS", "OpenGL", "Vulkan", "Direct3D", "SQLite",
          "miniBox", "ffmpeg", "Qt", "Wayland"]
 try:

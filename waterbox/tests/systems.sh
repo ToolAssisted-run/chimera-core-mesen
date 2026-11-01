@@ -196,18 +196,26 @@ sys_device_legs() { # device
 
 	# the same schedule with plain pads where the device was
 	local plain
-	plain="$(sysdir "dev-$dev-plain" "$root/tests/roms/$rom" "{\"machine\":\"$m\"}")"
-	"$rn" "$plain" "${args[@]}" --dump-domain "$domain" "$work/$dev.plain.ram" > /dev/null 2>&1
+	case "$dev" in
+	*Tilt)
+		# the sensor is the cartridge's: without it is with it level
+		plain="$(sysdir "dev-$dev-plain" "$root/tests/roms/$rom" "$settings")"
+		"$rn" "$plain" --frames 240 --wire "$wire" --neutral "$neutral" --dump-domain "$domain" "$work/$dev.plain.ram" > /dev/null 2>&1 ;;
+	*)
+		plain="$(sysdir "dev-$dev-plain" "$root/tests/roms/$rom" "{\"machine\":\"$m\"}")"
+		"$rn" "$plain" "${args[@]}" --dump-domain "$domain" "$work/$dev.plain.ram" > /dev/null 2>&1 ;;
+	esac
 	if ! seen="$(python3 -I "$md" check "$dev" "$work/$dev.inputs" "$work/$dev.box.ram" 2>&1)"; then
 		report "$dev:input" FAIL "$seen"
 	elif cmp -s "$work/$dev.box.ram" "$work/$dev.plain.ram"; then
 		report "$dev:input" FAIL "with plain pads in the device's place the program reads the same"
 	else
-		report "$dev:input" PASS "$seen; with plain pads in its place the program reads otherwise"
+		report "$dev:input" PASS "$seen; with plain pads in its place (a tilt sensor: level) the program reads otherwise"
 	fi
 
 	local n i bad=""
 	n="$(python3 -I "$md" buttons "$dev")"
+	[ "$n" -gt 0 ] || n=0
 	for i in $(seq 0 $((n - 1))); do
 		python3 -I "$md" column "$dev" 120 "$i" "$work/$dev.col.inputs"
 		"$rn" "$wd" --frames 120 --inputs "$work/$dev.col.inputs" --wire "$wire" --neutral "$neutral" \
@@ -219,7 +227,7 @@ sys_device_legs() { # device
 	done
 	if [ -n "$bad" ]; then
 		report "$dev:buttons" FAIL "$bad"
-	else
+	elif [ "$n" -gt 0 ]; then
 		report "$dev:buttons" PASS "each of the device's $n buttons, held alone, is read as itself and no other"
 	fi
 
@@ -238,6 +246,76 @@ sys_device_legs() { # device
 		report "$dev:session" PASS "saved at 120 by one process, loaded by another: the same machine at the end"
 	else
 		report "$dev:session" FAIL "$(diff "$work/$dev.straight" "$work/$dev.loaded" | short)"
+	fi
+}
+
+# The Master System's revision (smsModel), on sms-model.sms: a read of port
+# $3E finds the bus's last byte on the first Master System and $FF on the
+# others; the name table's bit 10 is forced to 0 on the first Master System
+# and in Mesen's Compatibility (NTSC, register 2's bit 0 clear), so the
+# bottom third of the picture is black there and white on the Master System
+# 2. Each native == sandbox == saved and loaded each frame.
+sys_sms_model_leg() {
+	local mo wd res="" same=1 wire
+	wire="$(python3 -I "$sys_py" wire sms)"
+	for mo in compatibility sms1 sms2; do
+		wd="$(sysdir "smsmodel.$mo" "$root/tests/roms/sms-model.sms" "{\"machine\":\"sms\",\"smsModel\":\"$mo\"}")"
+		"$rn" "$wd" --frames 30 --wire "$wire" --screenshot "$work/smsmodel.$mo.tga" --dump-domain "Work RAM" "$work/smsmodel.$mo.ram" 2>/dev/null | digests > "$work/smsmodel.$mo.nat"
+		rw "$wd" --frames 30 --wire "$wire" 2>/dev/null | digests > "$work/smsmodel.$mo.box"
+		rw "$wd" --frames 30 --wire "$wire" --rerecord 2>/dev/null | digests > "$work/smsmodel.$mo.rr"
+		{ [ -s "$work/smsmodel.$mo.box" ] && cmp -s "$work/smsmodel.$mo.nat" "$work/smsmodel.$mo.box" && cmp -s "$work/smsmodel.$mo.box" "$work/smsmodel.$mo.rr"; } || same=0
+		res="$res $mo:$(python3 -I - "$work/smsmodel.$mo.tga" "$work/smsmodel.$mo.ram" <<'PYSMS'
+import sys
+d = open(sys.argv[1], "rb").read()
+w = d[12] | d[13] << 8
+i = (160 * w + 128) * 4
+print("%s,%02x" % ("white" if d[18 + i:18 + i + 3] == b"\xff\xff\xff" else "black", open(sys.argv[2], "rb").read()[0x10]))
+PYSMS
+)"
+	done
+	if [ "$same" != 1 ]; then
+		report "sms:model" FAIL "native, sandbox and saved-and-loaded runs differ"
+	elif [ "$res" != " compatibility:black,ff sms1:black,3e sms2:white,ff" ]; then
+		report "sms:model" FAIL "the picture's bottom and port \$3E (want black,ff black,3e white,ff):$res"
+	else
+		report "sms:model" PASS "the picture's bottom third and port \$3E:$res, as each revision gives them; native == sandbox == saved and loaded each frame"
+	fi
+}
+
+# The PC Engine CD's card (pceCdType): with a disc made here (one data track)
+# and the System Card (the owner's), the Arcade Card's machine has the
+# Super CD-ROM System's 192 KiB of card RAM and the Arcade Card's own
+# memory, the Super CD-ROM System's the card RAM only, the first CD-ROM
+# System's neither (the memory domains Mesen registers); native == sandbox.
+sys_pce_cd_type_leg() {
+	local card="$scontent/firmware/PCECD_3.0-(J).pce" t wd res="" same=1
+	if [ -z "$scontent" ] || [ ! -f "$card" ]; then
+		report "pcecd:card-type" SKIP "needs PCECD_3.0-(J).pce in MESEN_SYSTEMS_CONTENT/firmware"
+		return
+	fi
+	for t in arcade superCdRom cdRom; do
+		wd="$work/cdtype.$t"
+		rm -rf "$wd" && mkdir -p "$wd"
+		python3 -I - "$wd" <<'PYDISC'
+import sys
+wd = sys.argv[1]
+open(wd + "/disc.cue", "w").write('FILE "disc.img" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n')
+open(wd + "/disc.img", "wb").write(bytes(2352 * 32))
+PYDISC
+		printf '{"disc":["disc.cue"]}' > "$wd/slots"
+		printf '{"machine":"pcecd","pceCdType":"%s"}' "$t" > "$wd/settings"
+		cp "$card" "$wd/syscard3.pce"
+		"$rn" "$wd" --frames 60 --wire "$(python3 -I "$sys_py" wire pcecd)" 2>/dev/null | digests > "$work/cdtype.$t.nat"
+		rw "$wd" --frames 60 --wire "$(python3 -I "$sys_py" wire pcecd)" 2>/dev/null | digests > "$work/cdtype.$t.box"
+		{ [ -s "$work/cdtype.$t.box" ] && cmp -s "$work/cdtype.$t.nat" "$work/cdtype.$t.box"; } || same=0
+		res="$res $t:$(grep -c '^domain\[Card RAM\]' "$work/cdtype.$t.box"),$(grep -c '^domain\[Arcade Card RAM\]' "$work/cdtype.$t.box")"
+	done
+	if [ "$same" != 1 ]; then
+		report "pcecd:card-type" FAIL "native and sandbox differ"
+	elif [ "$res" != " arcade:1,1 superCdRom:1,0 cdRom:0,0" ]; then
+		report "pcecd:card-type" FAIL "card RAM, Arcade Card RAM (want 1,1 1,0 0,0):$res"
+	else
+		report "pcecd:card-type" PASS "the card's memory (card RAM, Arcade Card RAM):$res, as each card has it; native == sandbox"
 	fi
 }
 
@@ -496,9 +574,12 @@ systems_core() {
 
 	# ------------------------------------------------------------ the devices beyond the pad
 	local dev
-	for dev in snesMouse1 snesMouse2 superScope lightPhaser1 lightPhaser2 avenuePad6 avenuePad6Tap; do
+	for dev in snesMouse1 snesMouse2 superScope lightPhaser1 lightPhaser2 avenuePad6 avenuePad6Tap \
+		nttKeypadSnes1 nttKeypadSnes2 blueRetro gbTilt gbaTilt; do
 		sys_device_legs "$dev"
 	done
+	sys_sms_model_leg
+	sys_pce_cd_type_leg
 	sys_sgx_leg
 	sys_card_leg
 	local pceg="$scontent/systems/pcengine" cdg="$scontent/systems/pcEngineCD" wsg="$scontent/systems/wonderswan"
@@ -940,7 +1021,8 @@ systems_engine() {
 	sys_polls_leg engine:pce-polls pce "$root/tests/roms/pce-test.pce" '{"machine":"pce"}' 1 300
 	sys_engine_leg engine:pcv2 pcv2 "$root/tests/roms/ws-test.ws" '{"machine":"pcv2"}' 1 480 "Work RAM"
 	local dev
-	for dev in snesMouse1 snesMouse2 superScope lightPhaser1 lightPhaser2 avenuePad6 avenuePad6Tap; do
+	for dev in snesMouse1 snesMouse2 superScope lightPhaser1 lightPhaser2 avenuePad6 avenuePad6Tap \
+		nttKeypadSnes1 nttKeypadSnes2 blueRetro gbTilt gbaTilt; do
 		sys_device_engine_leg "$dev"
 	done
 	sys_cd_engine_leg

@@ -11,6 +11,13 @@ A device is one of:
     lightPhaser2  the Light Phaser in port 2 (a pad in port 1)
     avenuePad6    the PC Engine's six-button Avenue Pad 6
     avenuePad6Tap five Avenue Pad 6s through the multitap
+    nttKeypadSnes1  the NTT Data Keypad in the Super NES's port 1 (a pad in 2)
+    nttKeypadSnes2  the keypad in port 2 (a pad in port 1)
+    blueRetro     the BlueRetro adapter in port 1 (a pad with analog sticks
+                  and triggers; a pad in port 2)
+    gbTilt        the tilt sensor of an MBC7 cartridge (gb-tilt.gb)
+    gbaTilt       the tilt sensor Mesen gives a Game Boy Advance game by its
+                  code (gba-tilt.gba)
 and DEVICES below says each one's machine, settings, test program and RAM.
 
     machine-devices.py info <device>
@@ -50,6 +57,8 @@ sys.path.insert(0, HERE)
 sys.dont_write_bytecode = True
 import systems  # noqa: E402
 
+KEYPAD = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "#", ".", "C", "End"]
+
 # device -> machine, settings, test program, RAM domain, the players whose pads
 # are active, the device's buttons (wire names), the device's axes as
 # (axis index, name, how it moves in the schedule)
@@ -70,9 +79,22 @@ DEVICES = {
     "avenuePad6Tap": ("pce", {"machine": "pce", "pcePort": "multitap", "pcePad": "avenuePad6"}, "pce-pad6.pce",
                       "Work RAM", [1, 2, 3, 4, 5],
                       ["P%d %s" % (p, b) for p in range(1, 6) for b in ("III", "IV", "V", "VI")], []),
+    "nttKeypadSnes1": ("snes", {"machine": "snes", "snesPort1": "nttKeypad"}, "snes-devices.sfc", "WRAM", [1, 2],
+                       ["P1 Keypad " + k for k in KEYPAD], []),
+    "nttKeypadSnes2": ("snes", {"machine": "snes", "snesPort2": "nttKeypad"}, "snes-devices.sfc", "WRAM", [1, 2],
+                       ["P2 Keypad " + k for k in KEYPAD], []),
+    "blueRetro": ("snes", {"machine": "snes", "snesPort1": "blueRetro"}, "snes-blueretro.sfc", "WRAM", [1, 2], [],
+                  [(6, "P1 Left Stick X", "stick"), (7, "P1 Left Stick Y", "stick"), (8, "P1 Right Stick X", "stick"),
+                   (9, "P1 Right Stick Y", "stick"), (10, "P1 Left Trigger", "trigger"),
+                   (11, "P1 Right Trigger", "trigger")]),
+    "gbTilt": ("gb", {"machine": "gb"}, "gb-tilt.gb", "WRAM", [1], [],
+               [(0, "P1 Tilt X", "stick"), (1, "P1 Tilt Y", "stick")]),
+    "gbaTilt": ("gba", {"machine": "gba", "gbaBios": "none"}, "gba-tilt.gba", "EWRAM", [1], [],
+                [(0, "P1 Tilt X", "stick"), (1, "P1 Tilt Y", "stick")]),
 }
 
-NEUTRAL = {"snes": [0, 0, 0, 0, 32768, 32768], "sms": [32768, 32768, 32768, 32768, 32768, 32768]}
+NEUTRAL = {"snes": [0, 0, 0, 0, 32768, 32768, 0, 0, 0, 0, 0, 0], "sms": [32768, 32768, 32768, 32768, 32768, 32768],
+           "gb": [0, 0], "gba": [0, 0]}
 
 
 def info(device):
@@ -89,6 +111,10 @@ def wire_index(device, name):
 
 def axis_value(kind, f, k):
     """an axis's value at frame f (k: which axis of the device)"""
+    if kind == "stick":
+        return ((f * (9973 + 4099 * k)) % 65536) - 32768
+    if kind == "trigger":
+        return (f * (37 + 11 * k)) % 256
     if kind == "rel":
         # a mouse's movement: every size and both ways, now and then none
         v = ((f * (37 + 16 * k)) % 255) - 127
@@ -327,6 +353,66 @@ def check(device, lines, ram, column=False):
             if got != want:
                 problems.append("P%d read %s, not %s" % (p, sorted(got), sorted(want)))
             seen.append("P%d %s" % (p, "+".join(sorted(got)) or "-"))
+    elif device in ("nttKeypadSnes1", "nttKeypadSnes2"):
+        at = -2
+        port = 1 if device == "nttKeypadSnes1" else 2
+        lo, hi = (0x10, 0x11) if port == 1 else (0x12, 0x13)
+        manual = 0x40 if port == 1 else 0x50
+        cfield, pfields, held, axes = parsed[at]
+        pad = systems.machine(m)[2][port - 1]
+        names = ["B", "Y", "Select", "Start", "Up", "Down", "Left", "Right", "A", "X", "L", "R"]
+        v = 1 << 13
+        for i, n in enumerate(names):
+            if pfields[port - 1][pad.index("P%d %s" % (port, n))]:
+                v |= 1 << i
+        for i, k in enumerate(KEYPAD):
+            if is_held("P%d Keypad %s" % (port, k), at):
+                v |= 1 << (16 + i if i < 14 else 31)
+        # the automatic read: the first 16 bits, the first 8 in the high
+        # byte, highest bit first; then 16 by hand, one a byte
+        want_hi = sum(((v >> i) & 1) << (7 - i) for i in range(8))
+        want_lo = sum(((v >> (8 + i)) & 1) << (7 - i) for i in range(8))
+        got_more = bits(ram, manual, 16)
+        want_more = [(v >> (16 + i)) & 1 for i in range(16)]
+        if ram[hi] != want_hi or ram[lo] != want_lo or got_more != want_more:
+            problems.append("read %02x %02x %s, not %02x %02x %s" % (ram[hi], ram[lo], got_more, want_hi, want_lo, want_more))
+        seen.append("port %d keypad: %08x" % (port, v))
+    elif device == "blueRetro":
+        at = -2
+        cfield, pfields, held, axes = parsed[at]
+        pad = systems.machine(m)[2][0]
+        names = ["B", "Y", "Select", "Start", "Up", "Down", "Left", "Right", "A", "X", "L", "R"]
+        st = 0
+        for i, n in enumerate(names):
+            if pfields[0][pad.index("P1 %s" % n)]:
+                st |= 1 << (63 - i)
+        # the sticks and triggers Mesen asks KeyManager for at the strobe, in
+        # the frame the program reads them: the last frame's, not the one
+        # before as the buttons
+        lx, ly, rx, ry = (((axis(i, -1) >> 8) & 0xFF) for i in (6, 7, 8, 9))
+        al, ar = axis(10, -1) & 0xFF, axis(11, -1) & 0xFF
+        st |= (0x6 << 48) | (lx << 40) | (ly << 32) | (rx << 24) | (ry << 16) | (al << 8) | ar
+        stream = [(st >> (63 - i)) & 1 for i in range(64)]
+        want_hi = sum(stream[i] << (7 - i) for i in range(8))
+        want_lo = sum(stream[8 + i] << (7 - i) for i in range(8))
+        got_more = bits(ram, 0x40, 48)
+        if ram[0x11] != want_hi or ram[0x10] != want_lo or got_more != stream[16:]:
+            problems.append("read %02x %02x %s, not %02x %02x %s" % (ram[0x11], ram[0x10], "".join(map(str, got_more)),
+                                                                  want_hi, want_lo, "".join(map(str, stream[16:]))))
+        seen.append("mode 1: sticks %02x %02x %02x %02x, triggers %02x %02x" % (lx, ly, rx, ry, al, ar))
+    elif device in ("gbTilt", "gbaTilt"):
+        # Mesen takes the tilt with the frame's other controls, at its end:
+        # the program latches the frame before the last's (tilt.py's sums,
+        # Mesen's sensors)
+        sys.path.insert(0, HERE)
+        import tilt  # noqa: E402
+        x, y = axis(0, -2), axis(1, -2)
+        tm = "gb" if device == "gbTilt" else "gba"
+        want = tilt.expect(tm, x, y)
+        got = "".join("%02x" % b for b in ram[(0x10 if tm == "gb" else 0x20):][:4])
+        if got != want:
+            problems.append("the sensor read %s, not %s (tilt %d, %d)" % (got, want, x, y))
+        seen.append("tilt %d, %d: the sensor read %s" % (x, y, got))
     print("; ".join(problems) if problems else "the RAM shows the controls: " + "; ".join(seen))
     return not problems
 

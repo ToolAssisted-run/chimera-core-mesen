@@ -124,7 +124,7 @@ differ.
 
 It needs `run-native`, `run-wbx` and `core.wbx` built, and builds nothing
 (it builds the Super NES chip test cartridges it needs into its work
-folder). It ends with `<n> ok, <m> failed`; without Chimera it is 192
+folder). It ends with `<n> ok, <m> failed`; without Chimera it is 287
 checks, and SKIP lines for the checks that need Chimera or the owner's
 files. The other machines' checks are in `waterbox/tests/systems.sh`, which
 it sources. With
@@ -134,8 +134,8 @@ CHIMERA_ROOT=<chimera> MESEN_PACKAGE=<the package> ./waterbox/run-gate.sh
 ```
 
 more run: Chimera's own checks of the texts, and the ones through
-`<chimera>/build/dll/chimera-run`: 224 checks. With all of the owner's
-files (below) and `MESEN_PUBLISHED_PACKAGE`, 301.
+`<chimera>/build/dll/chimera-run`: 328 checks. With all of the owner's
+files (below) and `MESEN_PUBLISHED_PACKAGE`, 406.
 
 `MESEN_PUBLISHED_PACKAGE=<mesen.chimeraCore as published>` (the NES-only
 package, before the other machines) adds `nes:published` (its core.wbx and
@@ -162,7 +162,7 @@ window's in `run-frontend.sh`) say SKIP when a file is absent:
 | `systems/sms/`: mai_nurse, Galactic Protector; `systems/gamegear/`: Prince of Persia (a Master System cartridge), Frogger, Nazo Puyo; `firmware/SMS_us_1.3.sms`, `SMS_jp_2.1.sms` | `sms:game:*`, `gg:game:*` |
 | `systems/sg1000/`: Pitman, Monaco GP, foryster | `sg1000:game:*` |
 | `systems/pcengine/`: Bomberman (U), Bomberman '93 (J), Bomberman '94 (J), 1941 - Counter Attack (SGX) | `pce:game:*`, `sgx:game:1941` |
-| `firmware/PCECD_3.0-(J).pce` with `systems/pcEngineCD/`: F1 Team Simulation Project F, Magical Dinosaur Tour (.cue and .img) | `pcecd:game:*`, `pcecd:state-size`, `engine:pcecd`, `pcecd:frontend` |
+| `firmware/PCECD_3.0-(J).pce` with `systems/pcEngineCD/`: F1 Team Simulation Project F, Magical Dinosaur Tour (.cue and .img) | `pcecd:game:*`, `pcecd:state-size`, `engine:pcecd`, `pcecd:frontend`; the firmware alone: `pcecd:card-type` |
 | `systems/wonderswan/`: Saint Seiya - Ougon Densetsu Hen | `wsc:game:saintseiya`, `wsc:game-frontend` |
 | `firmware/Coleco_Bios.bin` with `systems/coleco/`: Carnival, Oil's Well | `coleco:*` (the test program too), `coleco:game:*`, `coleco:power-renamed`, `engine:coleco`, `coleco:frontend`, `coleco:keybinds` |
 
@@ -226,12 +226,13 @@ python3 <chimera>/tools/check-core-texts.py .
 
 It runs Chimera's window headless (no display) on projects it makes with
 `chimera-run --new-project`, and compares the console's RAM with the native
-reference's: 32 checks (the NES's 5, each other machine's test program
-in the window and its default keys, and the Super NES Mouse, Super Scope,
-Light Phaser, Avenue Pad 6, Power Pad and Hyper Shot with their buttons held and axes set through
-the window), more with `MESEN_CONTENT_DIR` (the
+reference's: 45 checks (the NES's 5, each other machine's test program
+in the window and its default keys, and the devices beyond the pad, among
+them the Super NES Mouse, Super Scope, NTT Data Keypad and BlueRetro
+adapter, the Light Phaser, Avenue Pad 6, the NES's devices and the tilt
+sensors, with their buttons held and axes set through the window), more with `MESEN_CONTENT_DIR` (the
 real rhythm ROM, Sonic, the Disk System) and `MESEN_SYSTEMS_CONTENT` (a
-game of each machine whose BIOS or games are the owner's): 43 in all; and
+game of each machine whose BIOS or games are the owner's): 56 in all; and
 one with `MESEN_FAMISTUDIO_ROMS`. Its files stay in `waterbox/tests/work/` (ignored by
 git). `--qt-lib` is for a window built against a Qt the system does not
 know of, such as `~/qt/6.12.0/gcc_64/lib` after `tools/ci-chimera.sh`.

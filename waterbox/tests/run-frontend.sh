@@ -526,7 +526,7 @@ device_window_leg() { # check device held-buttons axes(name:value,...)
 	local check="$1" dev="$2" holdnames="$3" axes="$4" md="$here/machine-devices.py" m rom settings domain dir p wd sysid
 	read -r m rom settings domain <<< "$(python3 -I "$md" info "$dev")"
 	domain="${domain//_/ }"
-	case "$m" in snes) sysid=SNES ;; sms) sysid=SMS ;; pce) sysid=PCE ;; *) sysid="$m" ;; esac
+	case "$m" in snes) sysid=SNES ;; sms) sysid=SMS ;; pce) sysid=PCE ;; gb) sysid=GB ;; gba) sysid=GBA ;; *) sysid="$m" ;; esac
 	python3 -I "$here/settings-config.py" "$work/window.$dev.json" '{}' '{}'
 	dir="$work/project.$dev"
 	rm -rf "$dir" && mkdir -p "$dir" && cp "$root/tests/roms/$rom" "$dir/"
@@ -559,6 +559,10 @@ device_window_leg snesMouse:frontend snesMouse1 "P1 Mouse Left" "P1 Mouse X:-20,
 device_window_leg superScope:frontend superScope "P2 Super Scope Cursor" "P2 Super Scope X:20000,P2 Super Scope Y:40000"
 device_window_leg lightPhaser:frontend lightPhaser2 "P2 Trigger" "P2 Light Phaser X:30000,P2 Light Phaser Y:20000"
 device_window_leg avenuePad6:frontend avenuePad6 "P1 III,P1 VI" ""
+device_window_leg nttKeypadSnes:frontend nttKeypadSnes1 "P1 Keypad 5,P1 Keypad End" ""
+device_window_leg blueRetro:frontend blueRetro "" "P1 Left Stick X:-20000,P1 Right Stick Y:12000,P1 Right Trigger:200"
+device_window_leg gbTilt:frontend gbTilt "" "P1 Tilt X:9000,P1 Tilt Y:-20000"
+device_window_leg gbaTilt:frontend gbaTilt "" "P1 Tilt X:-15000,P1 Tilt Y:7000"
 
 # --- the NES's devices of 2026-11-01 (nes-devices.py): a project whose port
 # holds the device, on its device test cartridge, the device's buttons held

@@ -21,6 +21,11 @@
 @     +0x10.
 @ At power on it keeps the CPU's status register (CPSR) at +8: 0x1F, system
 @ mode, when the boot screen was skipped.
+@ Assembled with TILT defined (gba-tilt.gba), its game code is KYGE, which
+@ Mesen gives a tilt sensor, and each frame it also reads the sensor (below);
+@ it has no SRAM then, but an EEPROM's marker, as the games with the sensor
+@ have (Mesen reaches the sensor only on a cartridge with no SRAM or flash,
+@ GbaCart::ReadRam, and takes a cartridge with no marker to have SRAM).
 @
 @ The strings SRAM_V113 and SIIRTC_V001 at the end tell Mesen that the
 @ cartridge has SRAM and the clock.
@@ -37,7 +42,11 @@ _start:
 	b	start
 	.space	0x9C, 0		@ 0x04: the logo, left empty (the BIOS is not run)
 	.ascii	"CHIMERA TEST"	@ 0xA0: title
+.ifdef TILT
+	.ascii	"KYGE"		@ 0xAC: game code: the one Mesen gives a tilt sensor
+.else
 	.ascii	"CMTE"		@ 0xAC: game code
+.endif
 	.ascii	"00"		@ 0xB0: maker
 	.byte	0x96		@ 0xB2: fixed value
 	.byte	0, 0		@ 0xB3: unit, device
@@ -91,11 +100,13 @@ reach:	ldrh	r0, [r2, #6]
 	mov	r6, #0x05000000
 	strh	r0, [r6]		@ the backdrop colour
 
+.ifndef TILT
 	mov	r6, #0x0E000000		@ SRAM, a byte at a time
 	strb	r0, [r6]
 	mov	r7, r0, lsr #8
 	strb	r7, [r6, #1]
 	strb	r5, [r6, #2]
+.endif
 
 	ldrh	r7, [r1, #2]
 	strh	r0, [r1, #2]
@@ -106,7 +117,37 @@ reach:	ldrh	r0, [r2, #6]
 	strh	r7, [r2, #0x64]		@ SOUND1CNT_X
 quiet:
 	bl	clock
+.ifdef TILT
+	bl	tilt
+.endif
 	b	frame
+
+.ifdef TILT
+@ the tilt sensor (gba-tilt.gba): the latch reset ($55 to 0x0E008000), the
+@ latch ($AA to 0x0E008100), then its four bytes (X low, X high, Y low, Y
+@ high at 0x0E008200, 300, 400, 500) kept at +0x20
+tilt:
+	ldr	r10, =0x0E008000
+	mov	r0, #0x55
+	strb	r0, [r10]
+	mov	r0, #0xAA
+	add	r11, r10, #0x100
+	strb	r0, [r11]
+	add	r11, r1, #0x20
+	add	r12, r10, #0x200
+	ldrb	r0, [r12]
+	strb	r0, [r11]
+	add	r12, r10, #0x300
+	ldrb	r0, [r12]
+	strb	r0, [r11, #1]
+	add	r12, r10, #0x400
+	ldrb	r0, [r12]
+	strb	r0, [r11, #2]
+	add	r12, r10, #0x500
+	ldrb	r0, [r12]
+	strb	r0, [r11, #3]
+	bx	lr
+.endif
 
 @ the clock's "date and time": the command 0x65 sent highest bit first
 @ (a bit is put on SIO with SCK low and taken on SCK's rise), then 56 bits
@@ -157,7 +198,11 @@ bits:
 
 	.ltorg
 	.align	4
+.ifndef TILT
 	.ascii	"SRAM_V113"
+.else
+	.ascii	"EEPROM_V124"	@ save memory Mesen sees as an EEPROM, as the tilt games have
+.endif
 	.align	4
 	.ascii	"SIIRTC_V001"
 	.align	4
