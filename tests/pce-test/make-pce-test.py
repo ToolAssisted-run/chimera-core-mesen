@@ -6,7 +6,13 @@ shows and sounds it.
 Usage: make-pce-test.py <out dir>
 
 Writes pce-test.pce (8 KiB) and sgx-test.sgx (the same program; Mesen
-builds a SuperGrafx for a .sgx file, or when the machine says so).
+builds a SuperGrafx for a .sgx file, or when the machine says so), and
+pce-pad6.pce, which reads the port twice a frame for six-button pads (the
+Avenue Pad 6): each reset of the port switches such a pad between its
+usual half (directions, I, II, Select, Run) and its other half (no
+direction held, which tells a six-button pad, and III, IV, V, VI on the
+button bits). The first read goes to RAM $10-$14 as above, the second to
+$18-$1C.
 
 What the program does:
   - at power on it maps the I/O page and its RAM, sets the video chip's
@@ -71,7 +77,7 @@ def vdc(a, reg, value):
     a.b(0x13, value & 0xFF, 0x23, value >> 8)  # ST1, ST2: its value
 
 
-def program():
+def program(passes=1):
     a = Asm(0xE000)
     a.label("reset")
     a.b(0x78, 0xD4, 0xD8)                 # SEI; CSH; CLD
@@ -106,16 +112,17 @@ def program():
     a.label("wait")
     a.b(0xAD, 0x00, 0x00, 0x29, 0x20)     # LDA $0000 (VDC status); AND #$20
     a.br(0xF0, "wait")
-    # the multitap's reset: CLR high, then low
-    a.b(0xA9, 0x01, 0x8D, 0x00, 0x10, 0xA9, 0x03, 0x8D, 0x00, 0x10, 0xA9, 0x01, 0x8D, 0x00, 0x10)
-    a.b(0xA2, 0x00)
-    a.label("pads")
-    a.b(0xA9, 0x01, 0x8D, 0x00, 0x10, 0xEA, 0xEA)   # SEL high
-    a.b(0xAD, 0x00, 0x10, 0x29, 0x0F, 0x0A, 0x0A, 0x0A, 0x0A, 0x85, 0x20)  # the directions, << 4, to $20
-    a.b(0x9C, 0x00, 0x10, 0xEA, 0xEA)               # SEL low
-    a.b(0xAD, 0x00, 0x10, 0x29, 0x0F, 0x05, 0x20, 0x49, 0xFF, 0x95, 0x10)  # | buttons, inverted, to $10,X
-    a.b(0xE8, 0xE0, 0x05)                           # INX; CPX #5
-    a.br(0xD0, "pads")
+    for n in range(passes):
+        # the multitap's reset: CLR high, then low
+        a.b(0xA9, 0x01, 0x8D, 0x00, 0x10, 0xA9, 0x03, 0x8D, 0x00, 0x10, 0xA9, 0x01, 0x8D, 0x00, 0x10)
+        a.b(0xA2, 0x00)
+        a.label("pads%d" % n)
+        a.b(0xA9, 0x01, 0x8D, 0x00, 0x10, 0xEA, 0xEA)   # SEL high
+        a.b(0xAD, 0x00, 0x10, 0x29, 0x0F, 0x0A, 0x0A, 0x0A, 0x0A, 0x85, 0x20)  # the directions, << 4, to $20
+        a.b(0x9C, 0x00, 0x10, 0xEA, 0xEA)               # SEL low
+        a.b(0xAD, 0x00, 0x10, 0x29, 0x0F, 0x05, 0x20, 0x49, 0xFF, 0x95, 0x10 + 8 * n)  # | buttons, inverted, to $10,X
+        a.b(0xE8, 0xE0, 0x05)                           # INX; CPX #5
+        a.br(0xD0, "pads%d" % n)
     a.b(0xE6, 0x00)                                 # INC $00
     a.b(0x9C, 0x02, 0x04, 0x9C, 0x03, 0x04)         # VCE colour 0
     a.b(0xA5, 0x10, 0x8D, 0x04, 0x04, 0x9C, 0x05, 0x04)   # = pad 1's byte
@@ -126,8 +133,8 @@ def program():
     return a.resolve(), a.labels
 
 
-def cart():
-    code, labels = program()
+def cart(passes=1):
+    code, labels = program(passes)
     rom = bytearray(0x2000)
     rom[0:len(code)] = code
     for vec in (0x1FF6, 0x1FF8, 0x1FFA, 0x1FFC):
@@ -143,6 +150,8 @@ def main():
     for name in ("pce-test.pce", "sgx-test.sgx"):
         with open(os.path.join(sys.argv[1], name), "wb") as f:
             f.write(data)
+    with open(os.path.join(sys.argv[1], "pce-pad6.pce"), "wb") as f:
+        f.write(cart(2))
 
 
 if __name__ == "__main__":

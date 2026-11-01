@@ -318,7 +318,7 @@ scontent="${MESEN_SYSTEMS_CONTENT:-}"
 players_of() { # machine settings
 	case "$2" in *multitap*) echo 5; return ;; esac
 	case "$1" in
-		gb|gbc|gba|gg|ws|wsc|pce|sgx|pcecd) echo 1 ;;
+		gb|gbc|gba|gg|ws|wsc|pcv2|pce|sgx|pcecd) echo 1 ;;
 		*) echo 2 ;;
 	esac
 }
@@ -436,6 +436,10 @@ else
 	report "coleco:frontend" SKIP "needs Coleco_Bios.bin in MESEN_SYSTEMS_CONTENT"
 	report "coleco:keybinds" SKIP "needs Coleco_Bios.bin in MESEN_SYSTEMS_CONTENT"
 fi
+# the Game Boy Advance's test program needs no BIOS (Game Boy Advance BIOS:
+# None), so it runs on CI
+system_window_leg gba:frontend gba "$root/tests/roms/gba-test.gba" '{"machine":"gba","gbaBios":"none"}' GBA EWRAM "P1 L,P1 A,P1 Up"
+system_keys_leg gba:keybinds gbakeys "$root/tests/roms/gba-test.gba" '{"machine":"gba","gbaBios":"none"}' "Game Boy Advance Controls"
 if [ -f "$sgames/gba/Megaman Battle Network (U) [!].gba" ] && [ -f "$scontent/firmware/GBA_bios.rom" ]; then
 	system_window_leg gba:game-frontend mmbn "$sgames/gba/Megaman Battle Network (U) [!].gba" '{"machine":"gba"}' GBA EWRAM "" "GBA_bios.rom=gba_bios.bin"
 else
@@ -482,6 +486,50 @@ else
 fi
 system_keys_leg pce:keybinds pcekeys "$root/tests/roms/pce-test.pce" '{"machine":"pce"}' "PC Engine Controller"
 system_keys_leg ws:keybinds wskeys "$root/tests/roms/ws-test.ws" '{"machine":"ws"}' "WonderSwan Controls"
+system_window_leg pcv2:frontend pcv2 "$root/tests/roms/ws-test.ws" '{"machine":"pcv2"}' PCV2 "Work RAM" "P1 Circle,P1 View,P1 Left"
+system_keys_leg pcv2:keybinds pcv2keys "$root/tests/roms/ws-test.ws" '{"machine":"pcv2"}' "Pocket Challenge V2 Controls"
+
+# --- the devices beyond the pad (machine-devices.py): a project whose port
+# holds the device, opened in the window, the device's buttons held and its
+# axes set through the window (a Lua script, with TAStudio recording), ends
+# on the native reference's RAM, which shows those controls ---
+device_window_leg() { # check device held-buttons axes(name:value,...)
+	local check="$1" dev="$2" holdnames="$3" axes="$4" md="$here/machine-devices.py" m rom settings domain dir p wd sysid
+	read -r m rom settings domain <<< "$(python3 -I "$md" info "$dev")"
+	domain="${domain//_/ }"
+	case "$m" in snes) sysid=SNES ;; sms) sysid=SMS ;; pce) sysid=PCE ;; *) sysid="$m" ;; esac
+	python3 -I "$here/settings-config.py" "$work/window.$dev.json" '{}' '{}'
+	dir="$work/project.$dev"
+	rm -rf "$dir" && mkdir -p "$dir" && cp "$root/tests/roms/$rom" "$dir/"
+	"$crun" --new-project "$dir/$dev.chimeraProject" "$package" "$dir/$rom" --settings "$settings" > "$dir/make.log" 2>&1
+	p="$dir/$dev.chimeraProject"
+	[ -f "$p" ] || { report "$check" FAIL "no project made (see tests/work/project.$dev/make.log)"; return; }
+	wd="$work/native.$dev"
+	rm -rf "$wd" && mkdir -p "$wd" && cp "$root/tests/roms/$rom" "$wd/"
+	python3 -I -c 'import json, sys; print(json.dumps({"cart": [sys.argv[1]]}))' "$rom" > "$wd/slots"
+	python3 -I -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["settings"]))' "$p" > "$wd/settings"
+	python3 -I "$md" hold "$dev" "$frames" "$work/$dev.inputs" "$holdnames" "$axes"
+	"$rn" "$wd" --frames "$frames" --wire "$(python3 -I "$sys_py" wire "$m")" --neutral "$(python3 -I "$md" neutral "$dev")" \
+		--inputs "$work/$dev.inputs" --dump-domain "$domain" "$work/native.$dev.ram.bin" > "$work/native.$dev.txt" 2>&1
+	printf 'frames=%s\nout=%s\nmeta=%s\nshot=\nhold=%s\naxes=%s\nsystem=%s\ndomain=%s\n' "$frames" "$work/$dev.ram.bin" "$work/$dev.meta.txt" \
+		"$holdnames" "$axes" "$sysid" "$domain" > "$work/job.$dev.txt"
+	( cd "$work" && MINIHAWK_JOB="$work/job.$dev.txt" timeout -s KILL 900 "$chimera_exe" --headless \
+		"--config=$work/window.$dev.json" "--core=$package" "--lua=$here/frontend-ram.lua" "--project=$p" ) > "$work/$dev.log" 2>&1
+	local seen
+	if ! { [ -f "$work/$dev.meta.txt" ] && grep -q "^status=OK" "$work/$dev.meta.txt"; }; then
+		report "$check" FAIL "the window did not report OK: $(grep -m1 detail= "$work/$dev.meta.txt" 2>/dev/null) (see tests/work/$dev.log)"
+	elif ! cmp -s "$work/native.$dev.ram.bin" "$work/$dev.ram.bin"; then
+		report "$check" FAIL "$domain differs from the native reference"
+	elif ! seen="$(python3 -I "$md" check "$dev" "$work/$dev.inputs" "$work/$dev.ram.bin" 2>&1)"; then
+		report "$check" FAIL "the test program read: $seen"
+	else
+		report "$check" PASS "$sysid, $frames frames in the window with $holdnames held and $axes: $domain == native; $seen"
+	fi
+}
+device_window_leg snesMouse:frontend snesMouse1 "P1 Mouse Left" "P1 Mouse X:-20,P1 Mouse Y:35"
+device_window_leg superScope:frontend superScope "P2 Super Scope Cursor" "P2 Super Scope X:20000,P2 Super Scope Y:40000"
+device_window_leg lightPhaser:frontend lightPhaser2 "P2 Trigger" "P2 Light Phaser X:30000,P2 Light Phaser Y:20000"
+device_window_leg avenuePad6:frontend avenuePad6 "P1 III,P1 VI" ""
 
 # --- the bindings the package ships are the machine's when nobody changed them ---
 p="$(make_project keys nova.nes '{}')"

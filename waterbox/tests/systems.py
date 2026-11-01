@@ -41,15 +41,30 @@ CONFIG = os.path.join(HERE, "..", "waterbox.config")
 
 
 def machine(name):
+    """the machine's input, its console buttons (the wire's first, before
+    player 1's) and each player's pad (the same columns for every player,
+    one after the other on the wire); the controls of the other devices a
+    port can hold come after the pads (devices(), machine-devices.py)"""
     cfg = json.load(open(CONFIG))
     for m in cfg["machines"]:
         if name in m.get("when", []):
             inp = m.get("input") or cfg["input"]
-            players = inp["players"]
-            inPlayer = {b for p in players for b in p}
-            console = [b for b in inp["buttons"] if b not in inPlayer]
-            return inp, console, players
+            buttons = inp["buttons"]
+            first = next(i for i, b in enumerate(buttons) if b.startswith("P1 "))
+            width = 0
+            while first + width < len(buttons) and buttons[first + width].startswith("P1 "):
+                width += 1
+            pads = [buttons[first + p * width:first + (p + 1) * width] for p in range(len(inp["players"]))]
+            return inp, buttons[:first], pads
     sys.exit("no machine %s in waterbox.config" % name)
+
+
+def devices(name):
+    """the wire's controls after the pads (a mouse's buttons, a light gun's
+    trigger, the Avenue Pad 6's III to VI), as (wire index, name)"""
+    inp, console, pads = machine(name)
+    at = len(console) + len(pads) * len(pads[0])
+    return [(at + i, b) for i, b in enumerate(inp["buttons"][at:])]
 
 
 def wire(name):
@@ -64,6 +79,10 @@ def pad_map(name):
     want = {"A": ["A", "I", "Button 2", "Right Button"], "B": ["B", "II", "Button 1", "Left Button"],
             "Select": ["Select"], "Start": ["Start", "Run", "Key 1"],
             "Up": ["Up", "X1"], "Down": ["Down", "X3"], "Left": ["Left", "X4"], "Right": ["Right", "X2"]}
+    want["A"].append("Clear")
+    want["B"].append("Circle")
+    want["Start"].append("View")
+    want["Select"].append("Esc")
     out = []
     for k in ("A", "B", "Select", "Start", "Up", "Down", "Left", "Right"):
         at = -1
@@ -289,10 +308,42 @@ def check_ws(name):
     return check
 
 
+def check_pcv2(lines, ram, players):
+    """the Pocket Challenge V2's buttons in the WonderSwan test program's
+    three groups (Mesen's WsControlManager): $0100 Clear Circle Pass on bits
+    0, 2, 3; $0101 View Esc Right; $0102 Left Down Up; bit 1 always set"""
+    groups = [(0x100, ["Clear", None, "Circle", "Pass"]), (0x101, ["View", None, "Esc", "Right"]),
+              (0x102, ["Left", None, "Down", "Up"])]
+    got, problems = set(), []
+    for at, names in groups:
+        if not ram[at] & 0x02:
+            problems.append("bit 1 of $%04x is not set: not the Pocket Challenge V2's controller" % at)
+        got |= {n for bit, n in enumerate(names) if n and ram[at] & (1 << bit)}
+    want = held_cols("pcv2", lines[-1], 1)
+    if got != want:
+        problems.append("P1 read %s, not %s" % (sorted(got), sorted(want)))
+    return report(problems, ["P1 " + ("+".join(sorted(got)) or "-")])
+
+
+def check_gba(lines, ram, players):
+    """EWRAM's first two bytes: A B Select Start Right Left Up Down R L from
+    bit 0 (held = 1); the status register the program started with at +8:
+    0x1F (system mode) when the boot screen was skipped"""
+    order = ["A", "B", "Select", "Start", "Right", "Left", "Up", "Down", "R", "L"]
+    keys = ram[0] | ram[1] << 8
+    got = {b for i, b in enumerate(order) if keys & (1 << i)}
+    want = held_cols("gba", lines[-1], 1)
+    problems = [] if got == want else ["P1 read %s, not %s" % (sorted(got), sorted(want))]
+    cpsr = ram[8] | ram[9] << 8
+    if cpsr & 0x1F != 0x1F:
+        problems.append("the program started in CPU mode 0x%02x, not system mode" % (cpsr & 0x1F))
+    return report(problems, ["P1 " + ("+".join(sorted(got)) or "-"), "started in system mode"])
+
+
 CHECKS = {"snes": check_snes, "sgb": check_snes, "gb": check_gb("gb"), "gbc": check_gb("gbc"),
           "sms": check_sms("sms"), "gg": check_sms("gg"), "sg1000": check_sms("sg1000"), "coleco": check_cv,
           "pce": check_pce("pce"), "sgx": check_pce("sgx"), "pcecd": check_pce("pcecd"),
-          "ws": check_ws("ws"), "wsc": check_ws("wsc")}
+          "ws": check_ws("ws"), "wsc": check_ws("wsc"), "gba": check_gba, "pcv2": check_pcv2}
 
 
 def colours(path):

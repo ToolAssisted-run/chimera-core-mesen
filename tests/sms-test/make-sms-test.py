@@ -6,8 +6,9 @@ the controllers in its RAM, shows and sounds it.
 Usage: make-sms-test.py <out dir>
 
 Writes sms-test.sms (Master System), gg-test.gg (Game Gear), sg-test.sg
-(SG-1000) and cv-test.col (ColecoVision; it runs only with the
-ColecoVision's BIOS, which starts it).
+(SG-1000), cv-test.col (ColecoVision; it runs only with the
+ColecoVision's BIOS, which starts it) and sms-phaser.sms (a Master System
+program for the Light Phaser, below).
 
 What the program does:
   - it sets the video chip up (the Master System's and Game Gear's mode 4;
@@ -28,6 +29,19 @@ What the program does:
   - the backdrop colour is player 1's byte, and the first tone channel
     plays at a frequency that byte gives.
 RAM is at $C000 ($7000 on the ColecoVision).
+
+sms-phaser.sms shows a white screen (every colour white) and, each frame after
+the frame flag: keeps the two ports' bytes (inverted: a Light Phaser's
+trigger is $DC bit 4 in port 1, $DD bit 2 in port 2) at RAM +0 and +1,
+counts frames at +4, waits for the first line of the picture and then reads
+$DD as fast as it can until a gun sees light ($DD bit 6 for port 1's, bit 7
+for port 2's, 0 when it does) or 768 reads have gone by (about 205 lines,
+more than the picture's 192). The ports' TR and TH lines are set as inputs
+($3F = $FF): the light comes in on TH. It keeps the line the light was seen on
+(the V counter, $7E) at +6 ($FF when none), the $DD byte that saw it at +7,
+the H counter ($7F, which the gun latches where it points) at +8, and how
+many reads it took at +9 (low) and +10; each written when the frame's
+search ends, so the RAM holds the last search that ended.
 
 This is our own program, written for this repository's tests; it is under
 the repository's licence.
@@ -159,23 +173,85 @@ def program(kind):
     return code
 
 
+def program_phaser():
+    ram = 0xC000
+    vdp_data, vdp_ctl = 0xBE, 0xBF
+    a = Asm(0)
+    a.b(0xF3, 0xED, 0x56)  # DI; IM 1
+    a.b(0x31, 0xF0, 0xDF)  # LD SP,$DFF0
+    a.jp("start")
+    a.org(0x0038)
+    a.b(0xFB, 0xED, 0x4D)  # EI; RETI
+    a.org(0x0066)
+    a.b(0xED, 0x45)        # RETN: Pause does nothing here
+    a.org(0x0100)
+    a.label("start")
+    a.b(0xAF)
+    for i in range(16):
+        a.b(0x32) ; a.b(*(ram + i).to_bytes(2, "little"))
+    for r, v in {0: 0x04, 1: 0xC0, 2: 0xFF, 5: 0xFF, 6: 0xFB, 7: 0x00}.items():
+        a.b(0x3E, v, 0xD3, vdp_ctl, 0x3E, 0x80 | r, 0xD3, vdp_ctl)
+    # the ports' TR and TH lines as inputs (the guns' light comes in on TH)
+    a.b(0x3E, 0xFF, 0xD3, 0x3F)       # OUT ($3F),$FF
+    # every colour white: the background's tiles (all of colour 0) and the
+    # backdrop (colour 16)
+    a.b(0x3E, 0x00, 0xD3, vdp_ctl, 0x3E, 0xC0, 0xD3, vdp_ctl)
+    a.b(0x06, 32, 0x3E, 0x3F)          # LD B,32; LD A,$3F
+    a.label("cram")
+    a.b(0xD3, vdp_data)                # OUT (data),A
+    a.jr(0x10, "cram")                 # DJNZ
+    a.label("main")
+    a.label("wait")
+    a.b(0xDB, vdp_ctl, 0xE6, 0x80)   # the frame flag
+    a.jr(0x28, "wait")
+    a.b(0xDB, 0xDC, 0x2F, 0x32) ; a.b(*(ram + 0).to_bytes(2, "little"))
+    a.b(0xDB, 0xDD, 0x2F, 0x32) ; a.b(*(ram + 1).to_bytes(2, "little"))
+    a.b(0x21) ; a.b(*(ram + 4).to_bytes(2, "little")) ; a.b(0x34)   # INC (ram+4)
+    # the first line of the picture: the V counter back at 0
+    a.label("top")
+    a.b(0xDB, 0x7E, 0xB7)            # IN A,($7E); OR A
+    a.jr(0x20, "top")                # JR NZ
+    a.b(0x11, 0x00, 0x00)            # LD DE,0: reads
+    a.label("poll")
+    a.b(0xDB, 0xDD)                  # IN A,($DD)
+    a.b(0xE6, 0xC0, 0xFE, 0xC0)      # AND $C0; CP $C0
+    a.jr(0x20, "seen")               # JR NZ: a gun sees light
+    a.b(0x13)                        # INC DE
+    a.b(0x7A, 0xFE, 0x03)            # LD A,D; CP 3: 768 reads, about 205 lines
+    a.jr(0x20, "poll")
+    a.b(0x3E, 0xFF, 0x32) ; a.b(*(ram + 6).to_bytes(2, "little"))   # no light this frame
+    a.jp("done")
+    a.label("seen")
+    a.b(0x47)                        # LD B,A
+    a.b(0xDB, 0x7F, 0x4F)            # IN A,($7F); LD C,A: the H counter
+    a.b(0xDB, 0x7E)                  # IN A,($7E): the line
+    a.b(0x32) ; a.b(*(ram + 6).to_bytes(2, "little"))
+    a.b(0x78, 0x32) ; a.b(*(ram + 7).to_bytes(2, "little"))
+    a.b(0x79, 0x32) ; a.b(*(ram + 8).to_bytes(2, "little"))
+    a.b(0x7B, 0x32) ; a.b(*(ram + 9).to_bytes(2, "little"))
+    a.b(0x7A, 0x32) ; a.b(*(ram + 10).to_bytes(2, "little"))
+    a.label("done")
+    a.jp("main")
+    return a.resolve()
+
+
 def cart(kind):
-    code = program(kind)
+    code = program_phaser() if kind == "phaser" else program(kind)
     size = 0x8000
     rom = bytearray(size)
     rom[0:len(code)] = code
-    if kind in ("sms", "gg"):
+    if kind in ("sms", "gg", "phaser"):
         # the header a BIOS checks: "TMR SEGA", the checksum of the first 32
         # KiB less the header, the region (4: export Master System, 7:
         # international Game Gear) and the size code (C: 32 KiB)
         rom[0x7FF0:0x7FF8] = b"TMR SEGA"
         total = sum(rom[0:0x7FF0]) & 0xFFFF
         rom[0x7FFA:0x7FFC] = total.to_bytes(2, "little")
-        rom[0x7FFF] = (0x4C if kind == "sms" else 0x7C)
+        rom[0x7FFF] = (0x7C if kind == "gg" else 0x4C)
     return bytes(rom)
 
 
-NAMES = {"sms": "sms-test.sms", "gg": "gg-test.gg", "sg": "sg-test.sg", "cv": "cv-test.col"}
+NAMES = {"sms": "sms-test.sms", "gg": "gg-test.gg", "sg": "sg-test.sg", "cv": "cv-test.col", "phaser": "sms-phaser.sms"}
 
 
 def main():

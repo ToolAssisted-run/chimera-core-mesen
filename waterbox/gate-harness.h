@@ -32,7 +32,12 @@
  * lines are |<console>|<player 1>|<player 2>|...|, one character a button in
  * the wire's order, '.' for one not held and any other for one held; and
  * --pad <8 wire indices> says where the pad exercise's A, B, Select, Start,
- * Up, Down, Left and Right are on that wire (-1: not on this pad).
+ * Up, Down, Left and Right are on that wire (-1: not on this pad). A line
+ * may end with an '@' field, |@b70 a0=-12 a4=40000|, for the controls of a
+ * machine's other devices (a mouse, a light gun, a six-button pad): bN
+ * holds the wire's button N, aN=V sets axis N. An axis a line does not name
+ * rests at its neutral value, which --neutral <v0,v1,...> gives for the
+ * machine's axes (the NES's otherwise).
  */
 #ifndef GATE_HARNESS_H
 #define GATE_HARNESS_H
@@ -45,9 +50,11 @@
 
 /* the NES's wire; another machine's is up to GATE_BTN_MAX */
 #define GATE_BTN_COUNT (2 + 4 * 8 + 2 + 2 + 3)
-#define GATE_BTN_MAX 64
+#define GATE_BTN_MAX 96
 #define GATE_AXIS_COUNT 6
 static const int32_t gate_axis_neutral[GATE_AXIS_COUNT] = { 32768, 32768, 80, 32768, 32768, 80 };
+/* the neutral values in use: the NES's, or the machine's (--neutral) */
+static int32_t gate_neutral[GATE_AXIS_COUNT] = { 32768, 32768, 80, 32768, 32768, 80 };
 
 struct gate_core
 {
@@ -212,7 +219,34 @@ static int gate_parse_extra(const char *s, uint8_t *buttons, int32_t *axes)
  * else for held. The console's field has the machine's console buttons,
  * each player's its pad's columns: --wire <console>,<pad> says how many. */
 static int gate_wire_console = 0, gate_wire_pad = 0;
-static int gate_parse_generic(const char *line, uint8_t *buttons)
+/* the '@' field of another machine's line: bN and aN=V, up to the '|' */
+static int gate_parse_generic_extra(const char *s, uint8_t *buttons, int32_t *axes)
+{
+	s++; /* '@' */
+	while (*s && *s != '|')
+	{
+		if (*s == ' ') { s++; continue; }
+		char *end;
+		if (*s == 'b')
+		{
+			long n = strtol(s + 1, &end, 10);
+			if (end == s + 1 || n < 0 || n >= GATE_BTN_MAX) return 0;
+			buttons[n] = 1;
+			s = end;
+			continue;
+		}
+		if (*s != 'a') return 0;
+		long n = strtol(s + 1, &end, 10);
+		if (end == s + 1 || n < 0 || n >= GATE_AXIS_COUNT || *end != '=') return 0;
+		const char *v = end + 1;
+		long value = strtol(v, &end, 10);
+		if (end == v) return 0;
+		axes[n] = (int32_t)value;
+		s = end;
+	}
+	return *s == '|' && s[1] == 0;
+}
+static int gate_parse_generic(const char *line, uint8_t *buttons, int32_t *axes)
 {
 	memset(buttons, 0, GATE_BTN_MAX);
 	const char *s = line;
@@ -220,6 +254,8 @@ static int gate_parse_generic(const char *line, uint8_t *buttons)
 	if (*s++ != '|') return 0;
 	while (*s)
 	{
+		if (*s == '@')
+			return field > 0 && gate_parse_generic_extra(s, buttons, axes);
 		int width = field == 0 ? gate_wire_console : gate_wire_pad;
 		int n = 0;
 		while (*s && *s != '|')
@@ -242,8 +278,8 @@ static int gate_parse_line(const char *line, uint8_t *buttons, int32_t *axes)
 	if (gate_wire_pad > 0)
 	{
 		for (int i = 0; i < GATE_AXIS_COUNT; i++)
-			axes[i] = gate_axis_neutral[i];
-		return gate_parse_generic(line, buttons);
+			axes[i] = gate_neutral[i];
+		return gate_parse_generic(line, buttons, axes);
 	}
 	memset(buttons, 0, GATE_BTN_COUNT);
 	for (int i = 0; i < GATE_AXIS_COUNT; i++)
@@ -350,7 +386,7 @@ static int gate_run(const struct gate_core *c, const struct gate_opts *o)
 		}
 		memset(buttons, 0, sizeof buttons);
 		for (int i = 0; i < GATE_AXIS_COUNT; i++)
-			axes[i] = gate_axis_neutral[i];
+			axes[i] = gate_neutral[i];
 		if (f < in.count)
 		{
 			if (!gate_parse_line(in.lines[f], buttons, axes))
@@ -515,6 +551,17 @@ static int gate_parse_opts(int argc, char **argv, int first, struct gate_opts *o
 		else if (!strcmp(argv[i], "--wire") && i + 1 < argc)
 		{
 			if (sscanf(argv[++i], "%d,%d", &gate_wire_console, &gate_wire_pad) != 2 || gate_wire_pad <= 0) return 0;
+		}
+		else if (!strcmp(argv[i], "--neutral") && i + 1 < argc)
+		{
+			const char *v = argv[++i];
+			for (int k = 0; k < GATE_AXIS_COUNT && *v; k++)
+			{
+				char *end;
+				gate_neutral[k] = (int32_t)strtol(v, &end, 10);
+				if (end == v) return 0;
+				v = *end == ',' ? end + 1 : end;
+			}
 		}
 		else if (!strcmp(argv[i], "--pad") && i + 1 < argc)
 		{

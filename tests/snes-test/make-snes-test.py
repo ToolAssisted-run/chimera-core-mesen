@@ -4,7 +4,9 @@ program that keeps what it reads from the controller ports in its RAM.
 
 Usage: make-snes-test.py <out dir>
 
-Writes snes-test.sfc (LoROM, 32 KiB, 2 KiB of battery-backed RAM) and one
+Writes snes-test.sfc (LoROM, 32 KiB, 2 KiB of battery-backed RAM),
+snes-devices.sfc (the same program reading a mouse and the Super Scope,
+below) and one
 cartridge per chip that runs a program of its own, each only a header and
 the same test program: snes-dsp1.sfc, snes-dsp1b.sfc, snes-dsp2.sfc,
 snes-dsp3.sfc, snes-dsp4.sfc, snes-st010.sfc, snes-st011.sfc and
@@ -27,6 +29,16 @@ What the program does:
     on bits 0 and 1), and makes the backdrop the colour of pad 1's bits;
   - it writes the frame count and pad 1's two bytes into its battery RAM
     ($70:0000-$70:0002), so a saved game holds them.
+
+snes-devices.sfc reads the ports for the mouse and the Super Scope
+instead of the multitap: after the automatic read (the first 16 bits of each
+port, at $10-$17 as above) it reads 16 more bits by hand from each port,
+with the I/O line left high and no new strobe: RAM $40-$4F from port 1
+($4016 bit 0), $50-$5F from port 2 ($4017 bit 0); a mouse's third and
+fourth bytes (its vertical and horizontal movement). Then it keeps the
+picture chip's latched beam position, which the Super Scope sets where it
+points: $213F (bit 6: latched) at $60, $213C twice (horizontal, low then
+high) at $61-$62, $213D twice (vertical) at $63-$64.
 
 This is our own program, written for this repository's tests; it is under
 the repository's licence.
@@ -72,7 +84,7 @@ def hi(v):
     return (v >> 8) & 0xFF
 
 
-def program(dsp_test):
+def program(dsp_test, devices=False):
     a = Asm(0x8000)
     a.label("reset")
     a.b(0x78)                      # SEI
@@ -133,14 +145,29 @@ def program(dsp_test):
     a.b(0xBD, 0x18, 0x42, 0x95, 0x10)  # LDA $4218,X; STA $10,X
     a.b(0xE8, 0xE0, 0x08)          # INX; CPX #8
     a.br(0xD0, "copy")
-    a.b(0x9C, 0x01, 0x42)          # STZ $4201: the I/O line low
-    a.b(0xA9, 0x01, 0x8D, 0x16, 0x40, 0x9C, 0x16, 0x40)  # strobe
-    a.b(0xA2, 0x00)
-    a.label("manual")
-    a.b(0xAD, 0x17, 0x40, 0x95, 0x20)  # LDA $4017; STA $20,X
-    a.b(0xE8, 0xE0, 0x10)          # INX; CPX #16
-    a.br(0xD0, "manual")
-    a.b(0xA9, 0x80, 0x8D, 0x01, 0x42)  # the I/O line high again
+    if devices:
+        # 16 more bits from each port, after the automatic read's 16
+        a.b(0xA2, 0x00)
+        a.label("more")
+        a.b(0xAD, 0x16, 0x40, 0x95, 0x40)  # LDA $4016; STA $40,X
+        a.b(0xAD, 0x17, 0x40, 0x95, 0x50)  # LDA $4017; STA $50,X
+        a.b(0xE8, 0xE0, 0x10)          # INX; CPX #16
+        a.br(0xD0, "more")
+        # the latched beam position
+        a.b(0xAD, 0x3F, 0x21, 0x85, 0x60)  # LDA $213F; STA $60
+        a.b(0xAD, 0x3C, 0x21, 0x85, 0x61)  # LDA $213C; STA $61
+        a.b(0xAD, 0x3C, 0x21, 0x85, 0x62)
+        a.b(0xAD, 0x3D, 0x21, 0x85, 0x63)  # LDA $213D; STA $63
+        a.b(0xAD, 0x3D, 0x21, 0x85, 0x64)
+    else:
+        a.b(0x9C, 0x01, 0x42)          # STZ $4201: the I/O line low
+        a.b(0xA9, 0x01, 0x8D, 0x16, 0x40, 0x9C, 0x16, 0x40)  # strobe
+        a.b(0xA2, 0x00)
+        a.label("manual")
+        a.b(0xAD, 0x17, 0x40, 0x95, 0x20)  # LDA $4017; STA $20,X
+        a.b(0xE8, 0xE0, 0x10)          # INX; CPX #16
+        a.br(0xD0, "manual")
+        a.b(0xA9, 0x80, 0x8D, 0x01, 0x42)  # the I/O line high again
     a.b(0xE6, 0x00)                # INC $00
     a.b(0x9C, 0x21, 0x21)          # CGRAM address 0: the backdrop
     a.b(0xA5, 0x11, 0x8D, 0x22, 0x21)  # pad 1's B Y Select Start Up Down Left Right
@@ -157,6 +184,7 @@ def program(dsp_test):
 # name -> (title, ROM type, cartridge type at $7FBF)
 CARTS = {
     "snes-test": ("CHIMERA MESEN TEST", 0x02, 0x00),
+    "snes-devices": ("CHIMERA DEVICES TEST", 0x02, 0x00),
     "snes-dsp1": ("PILOTWINGS", 0x03, 0x00),
     "snes-dsp1b": ("CHIMERA DSP1B TEST", 0x03, 0x00),
     "snes-dsp2": ("DUNGEON MASTER", 0x03, 0x00),
@@ -170,7 +198,7 @@ CARTS = {
 
 def cart(name):
     title, rom_type, cart_type = CARTS[name]
-    code, labels = program(name in ("snes-dsp1", "snes-dsp1b"))
+    code, labels = program(name in ("snes-dsp1", "snes-dsp1b"), name == "snes-devices")
     rom = bytearray(0x8000)
     rom[0:len(code)] = code
     if isinstance(title, str):

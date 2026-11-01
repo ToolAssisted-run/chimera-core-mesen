@@ -158,6 +158,159 @@ sys_program_legs() { # tag machine rom settings players frames domain [src=id]..
 	fi
 }
 
+# The other machines' devices beyond the pad (the Super NES Mouse and Super
+# Scope, the Master System's Light Phaser, the PC Engine's Avenue Pad 6), on
+# the machines' device test programs (machine-devices.py says which):
+#   <device>:equivalence  a 240-frame schedule moving every control of the
+#                         device, native == sandbox
+#   <device>:input        the program's RAM shows the controls (buttons,
+#                         movement, where a gun points), and the same
+#                         schedule with plain pads in the device's place
+#                         reads otherwise
+#   <device>:buttons      each button of the device held alone is read as
+#                         itself and no other
+#   <device>:savestate    a save and a load around every frame change nothing
+#   <device>:session      a state saved half way by one process, loaded by
+#                         another, ends on the straight run's machine
+sys_device_legs() { # device
+	local dev="$1" md="$here/tests/machine-devices.py" m rom settings domain wd wire neutral seen
+	read -r m rom settings domain <<< "$(python3 -I "$md" info "$dev")"
+	domain="${domain//_/ }"
+	wd="$(sysdir "dev-$dev" "$root/tests/roms/$rom" "$settings")"
+	wire="$(python3 -I "$sys_py" wire "$m")"
+	neutral="$(python3 -I "$md" neutral "$dev")"
+	python3 -I "$md" schedule "$dev" 240 "$work/$dev.inputs"
+	local args=(--frames 240 --inputs "$work/$dev.inputs" --wire "$wire" --neutral "$neutral")
+	"$rn" "$wd" "${args[@]}" --dump-domain "$domain" "$work/$dev.nat.ram" 2>/dev/null | digests > "$work/$dev.nat"
+	rw "$wd" "${args[@]}" --dump-domain "$domain" "$work/$dev.box.ram" 2>"$work/$dev.box.err" > "$work/$dev.raw"
+	digests < "$work/$dev.raw" > "$work/$dev.box"
+	if [ "$(sed -n 's/^frames=//p' "$work/$dev.box")" != 240 ]; then
+		report "$dev:equivalence" FAIL "the sandbox did not run 240 frames: $(grep -v '^\[mesen\]' "$work/$dev.box.err" | head -1)"
+		return
+	fi
+	if cmp -s "$work/$dev.nat" "$work/$dev.box" && cmp -s "$work/$dev.nat.ram" "$work/$dev.box.ram"; then
+		report "$dev:equivalence" PASS "240 frames moving every control of the device, native == sandbox (picture, sound, lag, every domain)"
+	else
+		report "$dev:equivalence" FAIL "$(diff "$work/$dev.nat" "$work/$dev.box" | short)"
+	fi
+
+	# the same schedule with plain pads where the device was
+	local plain
+	plain="$(sysdir "dev-$dev-plain" "$root/tests/roms/$rom" "{\"machine\":\"$m\"}")"
+	"$rn" "$plain" "${args[@]}" --dump-domain "$domain" "$work/$dev.plain.ram" > /dev/null 2>&1
+	if ! seen="$(python3 -I "$md" check "$dev" "$work/$dev.inputs" "$work/$dev.box.ram" 2>&1)"; then
+		report "$dev:input" FAIL "$seen"
+	elif cmp -s "$work/$dev.box.ram" "$work/$dev.plain.ram"; then
+		report "$dev:input" FAIL "with plain pads in the device's place the program reads the same"
+	else
+		report "$dev:input" PASS "$seen; with plain pads in its place the program reads otherwise"
+	fi
+
+	local n i bad=""
+	n="$(python3 -I "$md" buttons "$dev")"
+	for i in $(seq 0 $((n - 1))); do
+		python3 -I "$md" column "$dev" 120 "$i" "$work/$dev.col.inputs"
+		"$rn" "$wd" --frames 120 --inputs "$work/$dev.col.inputs" --wire "$wire" --neutral "$neutral" \
+			--dump-domain "$domain" "$work/$dev.col.ram" > /dev/null 2>&1
+		if ! seen="$(python3 -I "$md" check "$dev" "$work/$dev.col.inputs" "$work/$dev.col.ram" column 2>&1)"; then
+			bad="button $i: $seen"
+			break
+		fi
+	done
+	if [ -n "$bad" ]; then
+		report "$dev:buttons" FAIL "$bad"
+	else
+		report "$dev:buttons" PASS "each of the device's $n buttons, held alone, is read as itself and no other"
+	fi
+
+	if rw "$wd" "${args[@]}" --rerecord 2>/dev/null | digests > "$work/$dev.rr" && cmp -s "$work/$dev.box" "$work/$dev.rr"; then
+		report "$dev:savestate" PASS "a save and a load around each of 240 frames change nothing"
+	else
+		report "$dev:savestate" FAIL "$(diff "$work/$dev.box" "$work/$dev.rr" | short)"
+	fi
+
+	finalDigests < "$work/$dev.raw" > "$work/$dev.straight"
+	rw "$wd" "${args[@]}" --save-at 120 "$work/$dev.state" > "$work/$dev.save" 2>/dev/null
+	rw "$wd" "${args[@]}" --load-at 120 "$work/$dev.state" 2>/dev/null | finalDigests > "$work/$dev.loaded"
+	if ! grep -q "^savedAt=120" "$work/$dev.save" || [ ! -s "$work/$dev.loaded" ]; then
+		report "$dev:session" FAIL "no state was saved at frame 120, or the loading process reported nothing"
+	elif cmp -s "$work/$dev.straight" "$work/$dev.loaded"; then
+		report "$dev:session" PASS "saved at 120 by one process, loaded by another: the same machine at the end"
+	else
+		report "$dev:session" FAIL "$(diff "$work/$dev.straight" "$work/$dev.loaded" | short)"
+	fi
+}
+
+# An owner's game with the Super NES Mouse: Arkanoid - Doh It Again, a pad in
+# port 1 (the pad exercise, which reaches a two-player game) and the mouse in
+# port 2, moving right all the time in one run and left in the other. The
+# second player's paddle (grey with blue ends, in rows 200-211 of the right
+# half of the picture) ends at the right in the first run and at the left in
+# the second; each run native == sandbox == saved and loaded each frame.
+sys_mouse_game_leg() {
+	local game="$scontent/systems/snes/Arkanoid - Doh It Again (J) [!].smc" dx wd centres=""
+	if [ -z "$scontent" ] || [ ! -f "$game" ]; then
+		report "snes:game:arkanoid-mouse" SKIP "needs Arkanoid - Doh It Again in MESEN_SYSTEMS_CONTENT"
+		return
+	fi
+	for dx in 40 -40; do
+		wd="$(sysdir "ark-mouse$dx" "$game" '{"machine":"snes","snesPort2":"mouse"}')"
+		local args=(--frames 1800 --exercise --wire 2,12 --pad "$(python3 -I "$sys_py" pad snes)" --neutral "0,0,$dx,0,32768,32768")
+		"$rn" "$wd" "${args[@]}" --screenshot "$work/ark$dx.tga" 2>/dev/null | digests > "$work/ark$dx.nat"
+		rw "$wd" "${args[@]}" 2>/dev/null | digests > "$work/ark$dx.box"
+		rw "$wd" "${args[@]}" --rerecord 2>/dev/null | digests > "$work/ark$dx.rr"
+		if [ ! -s "$work/ark$dx.box" ] || ! cmp -s "$work/ark$dx.nat" "$work/ark$dx.box" || ! cmp -s "$work/ark$dx.box" "$work/ark$dx.rr"; then
+			report "snes:game:arkanoid-mouse" FAIL "the mouse moving by $dx a frame: native, sandbox and saved-and-loaded runs differ"
+			return
+		fi
+		centres="$centres $(python3 -I - "$work/ark$dx.tga" <<'PYPAD'
+import sys
+d = open(sys.argv[1], "rb").read()
+w = d[12] | d[13] << 8
+px = d[18:]
+xs = []
+for y in range(200, 212):
+    for x in range(136, 250):
+        b, g, r = px[(y * w + x) * 4:(y * w + x) * 4 + 3]
+        if (r, g, b) == (0x18, 0x39, 0x9C) or (r == g == b and 0x40 <= r <= 0x70):
+            xs.append(x)
+print(sum(xs) // len(xs) if xs else -1)
+PYPAD
+)"
+	done
+	local right left
+	read -r right left <<< "$centres"
+	if [ "$right" -lt 0 ] || [ "$left" -lt 0 ] || [ $((right - left)) -lt 30 ]; then
+		report "snes:game:arkanoid-mouse" FAIL "the paddle's middle at x $right with the mouse moving right and $left moving left"
+	else
+		report "snes:game:arkanoid-mouse" PASS "Arkanoid - Doh It Again, the mouse in port 2: the paddle ends at x $right moving right and x $left moving left; native == sandbox == saved and loaded each frame"
+	fi
+}
+
+# The WonderSwan Color machine as a SwanCrystal (the setting wscModel): the
+# test program keeps port $62, whose bit 7 the SwanCrystal sets, at $0104.
+# Set with the SwanCrystal, clear with the WonderSwan Color, on the same
+# file; native == sandbox == saved and loaded each frame.
+sys_swancrystal_leg() {
+	local wc wsc wire bc bs
+	wire="$(python3 -I "$sys_py" wire wsc)"
+	wc="$(sysdir wsc-color "$root/tests/roms/ws-test.ws" '{"machine":"wsc"}')"
+	wsc="$(sysdir wsc-crystal "$root/tests/roms/ws-test.ws" '{"machine":"wsc","wscModel":"swanCrystal"}')"
+	"$rn" "$wc" --frames 120 --wire "$wire" --dump-domain "Work RAM" "$work/wsc-color.ram" > /dev/null 2>&1
+	"$rn" "$wsc" --frames 120 --wire "$wire" --dump-domain "Work RAM" "$work/wsc-crystal.ram" 2>/dev/null | digests > "$work/wsc-crystal.nat"
+	rw "$wsc" --frames 120 --wire "$wire" 2>/dev/null | digests > "$work/wsc-crystal.box"
+	rw "$wsc" --frames 120 --wire "$wire" --rerecord 2>/dev/null | digests > "$work/wsc-crystal.rr"
+	bc="$(od -An -tu1 -j260 -N1 "$work/wsc-color.ram" 2>/dev/null | tr -d ' ')"
+	bs="$(od -An -tu1 -j260 -N1 "$work/wsc-crystal.ram" 2>/dev/null | tr -d ' ')"
+	if [ ! -s "$work/wsc-crystal.box" ] || ! cmp -s "$work/wsc-crystal.nat" "$work/wsc-crystal.box" || ! cmp -s "$work/wsc-crystal.box" "$work/wsc-crystal.rr"; then
+		report "wsc:swancrystal" FAIL "native, sandbox and saved-and-loaded runs differ"
+	elif [ $(( ${bs:-0} & 128 )) = 0 ] || [ $(( ${bc:-128} & 128 )) != 0 ]; then
+		report "wsc:swancrystal" FAIL "port \$62 read ${bs:-?} on the SwanCrystal and ${bc:-?} on the WonderSwan Color"
+	else
+		report "wsc:swancrystal" PASS "the program reads the SwanCrystal's mark (port \$62 bit 7) on the SwanCrystal and not on the WonderSwan Color; native == sandbox == saved and loaded each frame"
+	fi
+}
+
 # A game of the owner's: the pad exercise (Start now and then) for long
 # enough to reach play, native == sandbox == sandboxed with a save and a
 # load around every frame, and another machine than the run with nothing
@@ -286,8 +439,12 @@ systems_core() {
 	sys_game_leg gbc:game:smbdx-nintendo-boot gbc "$gbcg/Super Mario Bros. Deluxe (USA, Europe) (Rev A).gbc" '{"machine":"gbc","bootRom":"nintendo"}' 1800 GBC_cgb.bin=cgb_boot.bin
 
 	# ------------------------------------------------------------ the Game Boy Advance
-	# Mesen runs no Game Boy Advance game without the console's BIOS, so the
-	# free checks are the refusal; the owner's games do the rest.
+	# A game needs the console's BIOS (refused without it, unless the setting
+	# Game Boy Advance BIOS is None); this repository's test program needs
+	# none and runs on CI with that setting, which also skips the boot screen.
+	sys_program_legs gba gba "$root/tests/roms/gba-test.gba" '{"machine":"gba","gbaBios":"none"}' 1 600 EWRAM
+	sys_gba_rtc_leg
+	sys_gba_skip_leg
 	local wn
 	wn="$(sysdir gba-nobios "$root/tests/roms/gb-test.gb" '{"machine":"gba"}')"
 	if rw "$wn" --frames 10 > /dev/null 2> "$work/gba-nobios.err" || ! grep -q "error.no_gba_bios" "$work/gba-nobios.err"; then
@@ -330,6 +487,14 @@ systems_core() {
 	sys_program_legs sgx sgx "$root/tests/roms/sgx-test.sgx" '{"machine":"sgx"}' 1 480 "Work RAM"
 	sys_program_legs ws ws "$root/tests/roms/ws-test.ws" '{"machine":"ws"}' 1 480 "Work RAM"
 	sys_program_legs wsc wsc "$root/tests/roms/ws-test.ws" '{"machine":"wsc"}' 1 480 "Work RAM"
+	sys_program_legs pcv2 pcv2 "$root/tests/roms/ws-test.ws" '{"machine":"pcv2"}' 1 480 "Work RAM"
+	sys_swancrystal_leg
+
+	# ------------------------------------------------------------ the devices beyond the pad
+	local dev
+	for dev in snesMouse1 snesMouse2 superScope lightPhaser1 lightPhaser2 avenuePad6 avenuePad6Tap; do
+		sys_device_legs "$dev"
+	done
 	sys_sgx_leg
 	sys_card_leg
 	local pceg="$scontent/systems/pcengine" cdg="$scontent/systems/pcEngineCD" wsg="$scontent/systems/wonderswan"
@@ -366,8 +531,62 @@ systems_core() {
 	sys_game_leg snes:game:topgear2 snes "$g/Top Gear 2 (U) [!].smc" '{"machine":"snes"}' 1800
 	sys_game_leg snes:game:sailormoon snes "$g/Bishoujo Senshi Sailor Moon S - Jougai Rantou! Shuyaku Soudatsusen (Japan).sfc" '{"machine":"snes"}' 1800
 	sys_game_leg snes:game:pop snes "$g/Prince of Persia (J).smc" '{"machine":"snes"}' 1800
+	sys_mouse_game_leg
 	sys_game_leg sgb:game:kirby sgb "$scontent/systems/gb/Kirby's Hoshinoka-Bi (J) (V1.1).gb" '{"machine":"sgb"}' 1800 "SNES_SGB2_(J).sfc=SGB2.sfc"
 	sys_game_leg sgb:game:kirby-sgb1 sgb "$scontent/systems/gb/Kirby's Hoshinoka-Bi (J) (V1.1).gb" '{"machine":"sgb","sgbModel":"sgb1"}' 1800 "SNES_SGB_RevB_(World).sfc=SGB1.sfc"
+}
+
+# The cartridge's clock on the machine's time (patch 0009): the Game Boy
+# Advance test program reads its S-3511A every frame. Mesen's S-3511A starts
+# at 2000-01-01 00:00:00 and counts the seconds that pass; after 600 frames
+# (10.03 s of the machine's time when the last frame reads it) it says
+# 00:00:10, natively and in the sandbox, with the host stopped for 3 s at
+# frame 300. Read from the host's clock it would say how long the run took
+# on this computer instead.
+sys_gba_rtc_leg() {
+	local wd cn cb
+	wd="$(sysdir gba-rtc "$root/tests/roms/gba-test.gba" '{"machine":"gba","gbaBios":"none"}')"
+	local args=(--frames 600 --wire "$(python3 -I "$sys_py" wire gba)" --stall 300 3000)
+	"$rn" "$wd" "${args[@]}" --dump-domain EWRAM "$work/gba-rtc.nat.ram" 2>/dev/null | digests > "$work/gba-rtc.nat"
+	rw "$wd" "${args[@]}" --dump-domain EWRAM "$work/gba-rtc.box.ram" 2>"$work/gba-rtc.box.err" | digests > "$work/gba-rtc.box"
+	cn="$(od -An -tx1 -j16 -N7 "$work/gba-rtc.nat.ram" 2>/dev/null | tr -d ' \n')"
+	cb="$(od -An -tx1 -j16 -N7 "$work/gba-rtc.box.ram" 2>/dev/null | tr -d ' \n')"
+	if [ ! -s "$work/gba-rtc.box" ] || ! cmp -s "$work/gba-rtc.nat" "$work/gba-rtc.box"; then
+		report "gba:rtc" FAIL "native and sandbox differ (clock native $cn, sandbox $cb)"
+	elif [ "$cn" != 00010100000010 ]; then
+		report "gba:rtc" FAIL "after 600 frames and a 3 s stop of the host the clock says $cn (year month day weekday hour minute second), not 00010100000010"
+	else
+		report "gba:rtc" PASS "after 600 frames, the host stopped 3 s on the way, the cartridge's clock says 2000-01-01 00:00:10 in both flavors: the machine's time, not the host's"
+	fi
+}
+
+# Skip Boot Screen with Nintendo's BIOS (the owner's file): on, the test
+# program starts at once in system mode; off, the BIOS runs first and
+# refuses a cartridge with no Nintendo logo, so the program never runs.
+sys_gba_skip_leg() {
+	local bios="$scontent/firmware/GBA_bios.rom"
+	if [ -z "$scontent" ] || [ ! -f "$bios" ]; then
+		report "gba:skip-boot" SKIP "needs GBA_bios.rom in MESEN_SYSTEMS_CONTENT/firmware"
+		return
+	fi
+	local won woff wire non noff
+	wire="$(python3 -I "$sys_py" wire gba)"
+	won="$(sysdir gba-skip-on "$root/tests/roms/gba-test.gba" '{"machine":"gba","gbaSkipBoot":"on"}' "$bios=gba_bios.bin")"
+	woff="$(sysdir gba-skip-off "$root/tests/roms/gba-test.gba" '{"machine":"gba","gbaSkipBoot":"off"}' "$bios=gba_bios.bin")"
+	"$rn" "$won" --frames 600 --wire "$wire" --dump-domain EWRAM "$work/gba-skip-on.ram" 2>/dev/null | digests > "$work/gba-skip-on.nat"
+	rw "$won" --frames 600 --wire "$wire" 2>/dev/null | digests > "$work/gba-skip-on.box"
+	"$rn" "$woff" --frames 600 --wire "$wire" --dump-domain EWRAM "$work/gba-skip-off.ram" > /dev/null 2>&1
+	non="$(od -An -tu4 -j4 -N4 "$work/gba-skip-on.ram" 2>/dev/null | tr -d ' ')"
+	noff="$(od -An -tu4 -j4 -N4 "$work/gba-skip-off.ram" 2>/dev/null | tr -d ' ')"
+	if [ ! -s "$work/gba-skip-on.box" ] || ! cmp -s "$work/gba-skip-on.nat" "$work/gba-skip-on.box"; then
+		report "gba:skip-boot" FAIL "with the BIOS and the boot screen skipped, native and sandbox differ"
+	elif [ "${non:-0}" -lt 590 ] || [ "$(od -An -tu1 -j8 -N1 "$work/gba-skip-on.ram" | tr -d ' ')" != 31 ]; then
+		report "gba:skip-boot" FAIL "skipped: the program counted ${non:-no} frames of 600, or did not start in system mode"
+	elif [ "${noff:-0}" != 0 ]; then
+		report "gba:skip-boot" FAIL "not skipped, the BIOS still let the logo-less program run (${noff} frames)"
+	else
+		report "gba:skip-boot" PASS "with Nintendo's BIOS: skipped, the program runs from the first frame ($non of 600) in system mode, native == sandbox; not skipped, the BIOS runs first and never starts it"
+	fi
 }
 
 # The Master System's Pause button is the console's: the test program counts
@@ -535,6 +754,43 @@ sys_engine_leg() { # check machine rom settings players frames domain [src=id]..
 	fi
 }
 
+# A device through Chimera's engine: the device's schedule written as a
+# Chimera movie (only the machine's active controls: the device's buttons
+# and axes, and the pads still plugged in), made into a project by one
+# chimera-run and replayed by another, ends on the native reference's RAM,
+# which shows the device's controls; and the device's reads reach Chimera's
+# input-poll callback.
+sys_device_engine_leg() { # device
+	local dev="$1" md="$here/tests/machine-devices.py" m rom settings domain pd wd seen
+	read -r m rom settings domain <<< "$(python3 -I "$md" info "$dev")"
+	domain="${domain//_/ }"
+	pd="$work/eng.$dev"
+	rm -rf "$pd" && mkdir -p "$pd" && cp "$root/tests/roms/$rom" "$pd/"
+	python3 -I "$md" schedule "$dev" 240 "$pd/in.inputs"
+	python3 -I "$md" movie "$dev" "$pd/in.inputs" "$pd/movie.txt"
+	"$runner" --new-project "$pd/p.chimeraProject" "$package" "$pd/$rom" "$pd/movie.txt" \
+		--settings "$settings" > "$pd/make.log" 2>&1
+	wd="$(sysdir "eng.$dev" "$root/tests/roms/$rom" "$(python3 -I -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["settings"]))' "$pd/p.chimeraProject" 2>/dev/null)")"
+	"$rn" "$wd" --frames 240 --inputs "$pd/in.inputs" --wire "$(python3 -I "$sys_py" wire "$m")" --neutral "$(python3 -I "$md" neutral "$dev")" \
+		--dump-domain "$domain" "$pd/native.ram" > /dev/null 2>&1
+	"$runner" --project "$pd/p.chimeraProject" "$package" --files "$pd" --count-input-polls \
+		--dump "$domain=$pd/engine.ram" --meta "$pd/meta" > "$pd/log" 2>&1
+	local got polls
+	got="$(sed -n 's/^frames=//p' "$pd/meta" 2>/dev/null)"
+	polls="$(sed -n 's/^inputPolls=//p' "$pd/meta" 2>/dev/null)"
+	if [ "${got:-0}" != 240 ]; then
+		report "engine:$dev" FAIL "the movie played ${got:-no} frames, not 240: $(tail -1 "$pd/make.log") $(tail -1 "$pd/log")"
+	elif ! cmp -s "$pd/native.ram" "$pd/engine.ram"; then
+		report "engine:$dev" FAIL "the movie through Chimera ends on another $domain than the native run"
+	elif ! seen="$(python3 -I "$md" check "$dev" "$pd/in.inputs" "$pd/engine.ram" 2>&1)"; then
+		report "engine:$dev" FAIL "through Chimera: $seen"
+	elif [ -z "$polls" ] || [ "$polls" = none ] || [ "$polls" -lt 240 ]; then
+		report "engine:$dev" FAIL "inputPolls=${polls:-missing}: the device's reads did not reach Chimera's input-poll callback"
+	else
+		report "engine:$dev" PASS "a 240-frame movie of the device made into a project and replayed by another chimera-run ends on the native reference's $domain ($seen); $polls reads of the controls reached Chimera"
+	fi
+}
+
 # A PC Engine CD game through chimera-run: the .cue given in the disc slot
 # and its image as another file of the project; the card SuggestSettings
 # names; a movie made into a project by one chimera-run and replayed by
@@ -610,7 +866,14 @@ systems_engine() {
 	sys_engine_leg engine:sgx sgx "$root/tests/roms/sgx-test.sgx" '{"machine":"sgx"}' 1 480 "Work RAM"
 	sys_engine_leg engine:ws ws "$root/tests/roms/ws-test.ws" '{"machine":"ws"}' 1 480 "Work RAM"
 	sys_engine_leg engine:wsc wsc "$root/tests/roms/ws-test.ws" '{"machine":"wsc"}' 1 480 "Work RAM"
+	sys_engine_leg engine:gba-test gba "$root/tests/roms/gba-test.gba" '{"machine":"gba","gbaBios":"none"}' 1 600 EWRAM
+	sys_polls_leg engine:gba-polls gba "$root/tests/roms/gba-test.gba" '{"machine":"gba","gbaBios":"none"}' 1 300
 	sys_polls_leg engine:pce-polls pce "$root/tests/roms/pce-test.pce" '{"machine":"pce"}' 1 300
+	sys_engine_leg engine:pcv2 pcv2 "$root/tests/roms/ws-test.ws" '{"machine":"pcv2"}' 1 480 "Work RAM"
+	local dev
+	for dev in snesMouse1 snesMouse2 superScope lightPhaser1 lightPhaser2 avenuePad6 avenuePad6Tap; do
+		sys_device_engine_leg "$dev"
+	done
 	sys_cd_engine_leg
 	local mmbn="$scontent/systems/gba/Megaman Battle Network (U) [!].gba"
 	if [ -n "$scontent" ] && [ -f "$mmbn" ] && [ -f "$scontent/firmware/GBA_bios.rom" ]; then

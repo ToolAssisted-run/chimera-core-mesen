@@ -75,6 +75,11 @@
 #include "SMS/SmsMemoryManager.h"
 #include "SMS/Input/SmsController.h"
 #include "SMS/Input/ColecoVisionController.h"
+#include "SMS/Input/SmsLightPhaser.h"
+#include "SNES/Input/SnesMouse.h"
+#include "SNES/Input/SuperScope.h"
+#include "PCE/Input/PceAvenuePad6.h"
+#include "WS/Input/Pcv2Controller.h"
 #include "WS/WsConsole.h"
 #include "WS/WsMemoryManager.h"
 #include "WS/WsPpu.h"
@@ -100,11 +105,11 @@ extern int64_t MesenVirtualClockMs;
  * "machine". The order is the setting's options'. ---- */
 enum Machine {
 	M_NES, M_SNES, M_SGB, M_GB, M_GBC, M_GBA, M_PCE, M_SGX, M_PCECD,
-	M_SMS, M_GG, M_SG, M_CV, M_WS, M_WSC, M_COUNT
+	M_SMS, M_GG, M_SG, M_CV, M_WS, M_WSC, M_PCV2, M_COUNT
 };
 static const char *const kMachineOptions[M_COUNT] = {
 	"nes", "snes", "sgb", "gb", "gbc", "gba", "pce", "sgx", "pcecd",
-	"sms", "gg", "sg1000", "coleco", "ws", "wsc",
+	"sms", "gg", "sg1000", "coleco", "ws", "wsc", "pcv2",
 };
 static int g_machine = M_NES;
 
@@ -136,8 +141,8 @@ static int g_machine = M_NES;
 #define BTN_NEXT_DISK (BTN_PREV_DISK + 1)
 #define BTN_EJECT_DISK (BTN_NEXT_DISK + 1)
 #define BTN_COUNT (BTN_EJECT_DISK + 1)
-/* the largest wire of any machine (the ColecoVision's: 2 + 2 x 18) */
-#define BTN_MAX 64
+/* the largest wire of any machine (the Super NES's: 2 + 5 x 12 + 8) */
+#define BTN_MAX 96
 static uint8_t g_buttons[BTN_MAX];
 
 #define AXIS_ZAPPER_X 0
@@ -233,21 +238,68 @@ static const PadLayout kLayouts[M_COUNT] = {
 	{ 2, { CON_POWER, WsController::Sound }, 11, { WsController::Up, WsController::Right, WsController::Down,
 		WsController::Left, WsController::Up2, WsController::Right2, WsController::Down2, WsController::Left2,
 		WsController::Start, WsController::A, WsController::B }, 1 },
+	/* M_PCV2: Power; Up Down Left Right, Clear, Circle, Pass, View, Esc (the
+	 * Pocket Challenge V2's own buttons) */
+	{ 1, { CON_POWER }, 9, { Pcv2Controller::Up, Pcv2Controller::Down, Pcv2Controller::Left, Pcv2Controller::Right,
+		Pcv2Controller::Clear, Pcv2Controller::Circle, Pcv2Controller::Pass, Pcv2Controller::View,
+		Pcv2Controller::Esc }, 1 },
 };
+
+/* The other machines' devices beyond the pad, whose controls follow the
+ * pads on the wire (so a movie made before keeps its columns):
+ *   the Super NES (and the Super Game Boy): P1 Mouse Left and Right, P2
+ *     Mouse Left and Right, then P2 Super Scope Fire, Cursor, Turbo and
+ *     Pause; axes 0 and 1 the mouse in port 1's movement, 2 and 3 port 2's
+ *     (-127..127 a frame, as the mouse counts it), 4 and 5 where the Super
+ *     Scope points (0..65535 across the picture);
+ *   the Master System: P1 Trigger and P2 Trigger, the Light Phasers'; axes
+ *     0 and 1 where port 1's points, 2 and 3 port 2's (0..65535);
+ *   the PC Engine machines: III, IV, V and VI of the Avenue Pad 6, for
+ *     each of the five players. */
+enum {
+	SNES_X_MOUSE1_LEFT, SNES_X_MOUSE1_RIGHT, SNES_X_MOUSE2_LEFT, SNES_X_MOUSE2_RIGHT,
+	SNES_X_SCOPE_FIRE, SNES_X_SCOPE_CURSOR, SNES_X_SCOPE_TURBO, SNES_X_SCOPE_PAUSE, SNES_X_COUNT
+};
+enum { SMS_X_TRIGGER1, SMS_X_TRIGGER2, SMS_X_COUNT };
+#define PCE_X_PER_PLAYER 4
+static int extra_count(int m)
+{
+	switch (m) {
+	case M_SNES: case M_SGB: return SNES_X_COUNT;
+	case M_SMS: return SMS_X_COUNT;
+	case M_PCE: case M_SGX: case M_PCECD: return 5 * PCE_X_PER_PLAYER;
+	default: return 0;
+	}
+}
+/* where on the wire a machine's device controls start: after the pads */
+static int extra_base(void)
+{
+	const PadLayout &l = kLayouts[g_machine];
+	return l.consoleCount + l.padCount * l.maxPlayers;
+}
+static int extra_button(int i)
+{
+	return g_buttons[extra_base() + i] != 0;
+}
+enum { SNES_AXIS_MOUSE1_X, SNES_AXIS_MOUSE1_Y, SNES_AXIS_MOUSE2_X, SNES_AXIS_MOUSE2_Y, SNES_AXIS_SCOPE_X, SNES_AXIS_SCOPE_Y };
+enum { SMS_AXIS_PHASER1_X, SMS_AXIS_PHASER1_Y, SMS_AXIS_PHASER2_X, SMS_AXIS_PHASER2_Y };
 static int wire_count(void)
 {
 	if (g_machine == M_NES)
 		return BTN_COUNT;
-	const PadLayout &l = kLayouts[g_machine];
-	return l.consoleCount + l.padCount * l.maxPlayers;
+	return extra_base() + extra_count(g_machine);
 }
 
 /* what the other machines' ports hold */
-enum { SNES_PORT_NONE, SNES_PORT_GAMEPAD, SNES_PORT_MULTITAP };
+enum { SNES_PORT_NONE, SNES_PORT_GAMEPAD, SNES_PORT_MULTITAP, SNES_PORT_MOUSE, SNES_PORT_SCOPE };
 enum { PCE_PORT_GAMEPAD, PCE_PORT_NONE, PCE_PORT_MULTITAP };
+enum { SMS_PORT_NONE, SMS_PORT_GAMEPAD, SMS_PORT_PHASER };
 static int g_snesPort1 = SNES_PORT_GAMEPAD, g_snesPort2 = SNES_PORT_GAMEPAD;
 static int g_pcePort = PCE_PORT_GAMEPAD;
-static int g_smsPort2 = 1; /* the Master System's and SG-1000's second pad */
+static int g_pcePad6 = 0; /* the PC Engine's pads are Avenue Pad 6s */
+/* the Master System's and SG-1000's ports (a Light Phaser on the Master
+ * System only) */
+static int g_smsPort1 = SMS_PORT_GAMEPAD, g_smsPort2 = SMS_PORT_GAMEPAD;
 
 static char g_loadError[512];
 static Emulator *g_emu;
@@ -340,6 +392,12 @@ static void set_machine_pad(BaseControlDevice *device, int player)
 	const uint8_t *pad = &g_buttons[l.consoleCount + player * l.padCount];
 	for (int col = 0; col < l.padCount; col++)
 		device->SetBitValue(l.pad[col], pad[col] != 0);
+	if (device->GetControllerType() == ControllerType::PceAvenuePad6) {
+		/* the Avenue Pad 6's III, IV, V and VI, after the pads on the wire */
+		static const uint8_t six[PCE_X_PER_PLAYER] = { PceAvenuePad6::III, PceAvenuePad6::IV, PceAvenuePad6::V, PceAvenuePad6::VI };
+		for (int i = 0; i < PCE_X_PER_PLAYER; i++)
+			device->SetBitValue(six[i], extra_button(player * PCE_X_PER_PLAYER + i));
+	}
 	if (player == 0)
 		for (int i = 0; i < l.consoleCount; i++)
 			if (l.console[i] >= 0)
@@ -416,6 +474,62 @@ public:
 			return true;
 		}
 		/* the other machines: a pad is its port's player */
+		case ControllerType::SnesMouse: {
+			/* the frame's movement (the mouse counts up to 127 each way) and
+			 * its two buttons */
+			if (port < 0 || port > 1)
+				return false;
+			int32_t dx = g_axes[port ? SNES_AXIS_MOUSE2_X : SNES_AXIS_MOUSE1_X];
+			int32_t dy = g_axes[port ? SNES_AXIS_MOUSE2_Y : SNES_AXIS_MOUSE1_Y];
+			dx = dx < -127 ? -127 : dx > 127 ? 127 : dx;
+			dy = dy < -127 ? -127 : dy > 127 ? 127 : dy;
+			/* what BaseControlDevice::SetMovement does (it is protected): the
+			 * movement added to what the device holds, which the mouse keeps
+			 * in its coordinates and takes at its next strobe */
+			MousePosition held = device->GetCoordinates();
+			MousePosition mov;
+			mov.X = (int16_t)(held.X + dx);
+			mov.Y = (int16_t)(held.Y + dy);
+			device->SetCoordinates(mov);
+			device->SetBitValue(SnesMouse::Left, extra_button(port ? SNES_X_MOUSE2_LEFT : SNES_X_MOUSE1_LEFT));
+			device->SetBitValue(SnesMouse::Right, extra_button(port ? SNES_X_MOUSE2_RIGHT : SNES_X_MOUSE1_RIGHT));
+			return true;
+		}
+		case ControllerType::SuperScope: {
+			/* where it points, in the picture's pixels as Mesen's UI turns
+			 * the mouse's place into them (KeyManager::SetMousePosition): the
+			 * 256 x 224 picture shown, below the 7 lines the overscan hides */
+			MousePosition pos;
+			pos.X = (int16_t)((int64_t)g_axes[SNES_AXIS_SCOPE_X] * 256 / 65536);
+			pos.Y = (int16_t)((int64_t)g_axes[SNES_AXIS_SCOPE_Y] * 224 / 65536 + 7);
+			device->SetCoordinates(pos);
+			/* SuperScope's Fire, Cursor, Turbo and Pause are its bits 0 to 3 */
+			for (int i = 0; i < 4; i++)
+				device->SetBitValue((uint8_t)i, extra_button(SNES_X_SCOPE_FIRE + i));
+			return true;
+		}
+		case ControllerType::SmsLightPhaser: {
+			/* where it points: the 256 x 192 picture shown, below the 24
+			 * lines the overscan hides (KeyManager::SetMousePosition), and
+			 * its trigger (its bit 0) */
+			if (port < 0 || port > 1)
+				return false;
+			MousePosition pos;
+			pos.X = (int16_t)((int64_t)g_axes[port ? SMS_AXIS_PHASER2_X : SMS_AXIS_PHASER1_X] * 256 / 65536);
+			pos.Y = (int16_t)((int64_t)g_axes[port ? SMS_AXIS_PHASER2_Y : SMS_AXIS_PHASER1_Y] * 192 / 65536 + 24);
+			device->SetCoordinates(pos);
+			device->SetBitValue(0, extra_button(port ? SMS_X_TRIGGER2 : SMS_X_TRIGGER1));
+			/* the console's Pause button is read from port 1's device */
+			if (port == 0)
+				device->SetBitValue(SmsController::Pause, g_buttons[2] != 0);
+			return true;
+		}
+		case ControllerType::PceAvenuePad6:
+		case ControllerType::Pcv2Controller:
+			if (port != 0)
+				return false;
+			set_machine_pad(device, 0);
+			return true;
 		case ControllerType::SnesController:
 		case ControllerType::SmsController:
 		case ControllerType::ColecoVisionController:
@@ -604,6 +718,14 @@ static int setting_on(const char *name)
 	return setting_choice(name, offOn, 2, 0);
 }
 
+/* the Game Boy Advance's BIOS: Nintendo's, as firmware (the default), or
+ * none, for a program that never calls it (Mesen then runs a BIOS of zeros) */
+static int gba_no_bios(void)
+{
+	static const char *const opts[] = { "nintendo", "none" };
+	return setting_choice("gbaBios", opts, 2, 0) == 1;
+}
+
 /* the other machines, each as Mesen's UI sets it up by default (the core's
  * own defaults are not the UI's: the Master System's and ColecoVision's
  * channel volumes are 0, the PC Engine's palette is empty), with what the
@@ -612,17 +734,23 @@ static int setting_on(const char *name)
  * drawn after frames that were not would not be the frame's own picture. */
 static void configure_other(EmuSettings *s)
 {
-	static const char *const snesPorts[] = { "none", "gamepad", "multitap" };
+	static const char *const snesPorts[] = { "none", "gamepad", "multitap", "mouse", "superScope" };
+	static const char *const smsPorts[] = { "none", "gamepad", "lightPhaser" };
 	static const char *const pcePorts[] = { "gamepad", "none", "multitap" };
 	static const char *const regions3[] = { "auto", "ntsc", "pal" };
 	static const ConsoleRegion region3Values[] = { ConsoleRegion::Auto, ConsoleRegion::Ntsc, ConsoleRegion::Pal };
 
 	SnesConfig snes = s->GetSnesConfig();
-	g_snesPort1 = setting_choice("snesPort1", snesPorts, 2, SNES_PORT_GAMEPAD);
-	g_snesPort2 = setting_choice("snesPort2", snesPorts, 3, SNES_PORT_GAMEPAD);
-	snes.Port1.Type = g_snesPort1 == SNES_PORT_GAMEPAD ? ControllerType::SnesController : ControllerType::None;
-	snes.Port2.Type = g_snesPort2 == SNES_PORT_GAMEPAD ? ControllerType::SnesController
-		: g_snesPort2 == SNES_PORT_MULTITAP ? ControllerType::Multitap : ControllerType::None;
+	/* port 1: a pad, nothing or the mouse; port 2 also the multitap and the
+	 * Super Scope (which is made for port 2) */
+	g_snesPort1 = setting_choice("snesPort1", snesPorts, 5, SNES_PORT_GAMEPAD);
+	if (g_snesPort1 == SNES_PORT_MULTITAP || g_snesPort1 == SNES_PORT_SCOPE)
+		g_snesPort1 = SNES_PORT_GAMEPAD;
+	g_snesPort2 = setting_choice("snesPort2", snesPorts, 5, SNES_PORT_GAMEPAD);
+	static const ControllerType snesTypes[] = { ControllerType::None, ControllerType::SnesController,
+		ControllerType::Multitap, ControllerType::SnesMouse, ControllerType::SuperScope };
+	snes.Port1.Type = snesTypes[g_snesPort1];
+	snes.Port2.Type = snesTypes[g_snesPort2];
 	for (int i = 0; i < 4; i++) {
 		snes.Port1SubPorts[i].Type = ControllerType::SnesController;
 		snes.Port2SubPorts[i].Type = ControllerType::SnesController;
@@ -661,7 +789,10 @@ static void configure_other(EmuSettings *s)
 
 	GbaConfig gba = s->GetGbaConfig();
 	gba.Controller.Type = ControllerType::GbaController;
-	gba.SkipBootScreen = false;
+	/* Mesen's "skip the boot screen" (off by default in Mesen's UI): the CPU
+	 * starts at the cartridge, in the state the BIOS leaves it in. Without a
+	 * BIOS (gbaBios "none") it is always on: nothing else could start. */
+	gba.SkipBootScreen = gba_no_bios() || setting_on("gbaSkipBoot");
 	gba.BlendFrames = false;
 	/* off: its colour curve is computed with pow(), whose last bit the
 	 * sandbox's C library and the host's do not always agree on */
@@ -676,10 +807,14 @@ static void configure_other(EmuSettings *s)
 
 	PcEngineConfig pce = s->GetPcEngineConfig();
 	g_pcePort = setting_choice("pcePort", pcePorts, 3, PCE_PORT_GAMEPAD);
-	pce.Port1.Type = g_pcePort == PCE_PORT_GAMEPAD ? ControllerType::PceController
+	/* the pads: the two-button pad, or NEC's six-button Avenue Pad 6 */
+	static const char *const pcePads[] = { "twoButton", "avenuePad6" };
+	g_pcePad6 = setting_choice("pcePad", pcePads, 2, 0);
+	ControllerType pcePad = g_pcePad6 ? ControllerType::PceAvenuePad6 : ControllerType::PceController;
+	pce.Port1.Type = g_pcePort == PCE_PORT_GAMEPAD ? pcePad
 		: g_pcePort == PCE_PORT_MULTITAP ? ControllerType::PceTurboTap : ControllerType::None;
 	for (int i = 0; i < 5; i++)
-		pce.Port1SubPorts[i].Type = ControllerType::PceController;
+		pce.Port1SubPorts[i].Type = pcePad;
 	static const char *const pceModels[] = { "auto", "pcengine", "turbografx" };
 	static const PceConsoleType pceModelValues[] = { PceConsoleType::Auto, PceConsoleType::PcEngine, PceConsoleType::TurboGrafx };
 	pce.ConsoleType = g_machine == M_SGX ? PceConsoleType::SuperGrafx : pceModelValues[setting_choice("pceModel", pceModels, 3, 0)];
@@ -704,10 +839,22 @@ static void configure_other(EmuSettings *s)
 	s->SetPcEngineConfig(pce);
 
 	SmsConfig sms = s->GetSmsConfig();
-	g_smsPort2 = setting_choice("smsPort2", snesPorts, 2, 1);
-	sms.Port1.Type = ControllerType::SmsController;
-	/* the Game Gear has one pad, built in */
-	sms.Port2.Type = g_smsPort2 && g_machine != M_GG ? ControllerType::SmsController : ControllerType::None;
+	/* the Light Phaser is the Master System's (either port); the SG-1000
+	 * has pads only, the Game Gear one pad, built in */
+	g_smsPort1 = setting_choice("smsPort1", smsPorts, 3, SMS_PORT_GAMEPAD);
+	g_smsPort2 = setting_choice("smsPort2", smsPorts, 3, SMS_PORT_GAMEPAD);
+	if (g_machine != M_SMS) {
+		g_smsPort1 = SMS_PORT_GAMEPAD;
+		if (g_smsPort2 == SMS_PORT_PHASER)
+			g_smsPort2 = SMS_PORT_GAMEPAD;
+	}
+	if (g_smsPort1 == SMS_PORT_NONE)
+		g_smsPort1 = SMS_PORT_GAMEPAD;
+	if (g_machine == M_GG)
+		g_smsPort2 = SMS_PORT_NONE;
+	static const ControllerType smsTypes[] = { ControllerType::None, ControllerType::SmsController, ControllerType::SmsLightPhaser };
+	sms.Port1.Type = smsTypes[g_smsPort1];
+	sms.Port2.Type = smsTypes[g_smsPort2];
 	sms.Region = region3Values[setting_choice("smsRegion", regions3, 3, 0)];
 	sms.GameGearRegion = ConsoleRegion::Auto;
 	sms.RamPowerOnState = ram_state(2);
@@ -738,7 +885,12 @@ static void configure_other(EmuSettings *s)
 	WsConfig ws = s->GetWsConfig();
 	ws.ControllerHorizontal.Type = ControllerType::WsController;
 	ws.ControllerVertical.Type = ControllerType::WsControllerVertical;
-	ws.Model = g_machine == M_WSC ? WsModel::Color : WsModel::Monochrome;
+	/* the WonderSwan Color machine is a WonderSwan Color or, by the setting
+	 * wscModel, a SwanCrystal; the Pocket Challenge V2 machine is that
+	 * console, with its own buttons */
+	static const char *const wscModels[] = { "color", "swanCrystal" };
+	ws.Model = g_machine == M_WSC ? (setting_choice("wscModel", wscModels, 2, 0) ? WsModel::SwanCrystal : WsModel::Color)
+		: g_machine == M_PCV2 ? WsModel::PocketChallenge : WsModel::Monochrome;
 	ws.UseBootRom = setting_on("wsBootRom") != 0;
 	ws.AutoRotate = true;
 	ws.BlendFrames = false;
@@ -965,6 +1117,7 @@ static std::string machine_name(const std::string &file)
 	case M_SG: return ext == ".sg" ? file : "game.sg";
 	case M_CV: return ext == ".col" ? file : "game.col";
 	case M_WS: case M_WSC: return ext == ".ws" || ext == ".wsc" ? file : "game.ws";
+	case M_PCV2: return ext == ".pc2" ? file : "game.pc2";
 	default: return file;
 	}
 }
@@ -1072,9 +1225,7 @@ ECL_EXPORT const char *SuggestSettings(void)
 	static char answer[1024];
 	char name[512];
 	const char *file = game_file(name, sizeof name);
-	static const char *const machines[M_COUNT] = { "nes", "snes", "sgb", "gb", "gbc", "gba", "pce", "sgx", "pcecd",
-		"sms", "gg", "sg1000", "coleco", "ws", "wsc" };
-	int machine = setting_choice("machine", machines, M_COUNT, M_NES);
+	int machine = setting_choice("machine", kMachineOptions, M_COUNT, M_NES);
 	std::vector<uint8_t> d;
 	FILE *f = fopen(file, "rb");
 	if (f) {
@@ -1154,6 +1305,13 @@ ECL_EXPORT int Init(void)
 	g_loadError[0] = 0;
 
 	g_machine = setting_choice("machine", kMachineOptions, M_COUNT, M_NES);
+	/* another machine's axes rest where its devices do: a mouse not moving,
+	 * a light gun at the middle of the picture */
+	if (g_machine != M_NES) {
+		static const int32_t snesNeutral[AXIS_COUNT] = { 0, 0, 0, 0, 32768, 32768 };
+		for (int i = 0; i < AXIS_COUNT; i++)
+			g_axes[i] = g_machine == M_SNES || g_machine == M_SGB ? snesNeutral[i] : 32768;
+	}
 
 	/* the sequence Mesen's "random" draws from; the seed is a setting, so a
 	 * project that wants a different power-on state says so */
@@ -1240,7 +1398,7 @@ ECL_EXPORT int Init(void)
 	} else {
 		/* the firmware Mesen cannot run without, said by name */
 		std::string ext = lower_ext(file);
-		if (g_machine == M_GBA && !need_file("gba_bios.bin", "error.no_gba_bios"))
+		if (g_machine == M_GBA && !gba_no_bios() && !need_file("gba_bios.bin", "error.no_gba_bios"))
 			return 0;
 		if (g_machine == M_CV && !need_file("bios.col", "error.no_coleco_bios"))
 			return 0;
@@ -1448,14 +1606,33 @@ static int machine_player_active(int player)
 		if (player == 0)
 			return g_snesPort1 == SNES_PORT_GAMEPAD;
 		if (player == 1)
-			return g_snesPort2 != SNES_PORT_NONE;
+			return g_snesPort2 == SNES_PORT_GAMEPAD || g_snesPort2 == SNES_PORT_MULTITAP;
 		return g_snesPort2 == SNES_PORT_MULTITAP;
 	case M_PCE: case M_SGX: case M_PCECD:
 		return player == 0 ? g_pcePort != PCE_PORT_NONE : g_pcePort == PCE_PORT_MULTITAP;
 	case M_SMS: case M_SG:
-		return player == 0 || g_smsPort2;
+		return player == 0 ? g_smsPort1 == SMS_PORT_GAMEPAD : g_smsPort2 == SMS_PORT_GAMEPAD;
 	default:
 		return player < kLayouts[g_machine].maxPlayers;
+	}
+}
+
+/* a device control of another machine (its index after the pads) */
+static int extra_active(int i)
+{
+	switch (g_machine) {
+	case M_SNES: case M_SGB:
+		if (i <= SNES_X_MOUSE1_RIGHT)
+			return g_snesPort1 == SNES_PORT_MOUSE;
+		if (i <= SNES_X_MOUSE2_RIGHT)
+			return g_snesPort2 == SNES_PORT_MOUSE;
+		return g_snesPort2 == SNES_PORT_SCOPE;
+	case M_SMS:
+		return (i == SMS_X_TRIGGER1 ? g_smsPort1 : g_smsPort2) == SMS_PORT_PHASER;
+	case M_PCE: case M_SGX: case M_PCECD:
+		return g_pcePad6 && machine_player_active(i / PCE_X_PER_PLAYER);
+	default:
+		return 0;
 	}
 }
 
@@ -1467,6 +1644,8 @@ ECL_EXPORT int IsButtonActive(int32_t index)
 			return 0;
 		if (index < l.consoleCount)
 			return 1;
+		if (index >= extra_base())
+			return extra_active(index - extra_base());
 		return machine_player_active((index - l.consoleCount) / l.padCount);
 	}
 	int fourScore = g_port1 == PORT1_FOUR_SCORE;
@@ -1500,6 +1679,22 @@ ECL_EXPORT int IsButtonActive(int32_t index)
 
 ECL_EXPORT int IsAxisActive(int32_t index)
 {
+	if (g_machine == M_SNES || g_machine == M_SGB) {
+		if (index == SNES_AXIS_MOUSE1_X || index == SNES_AXIS_MOUSE1_Y)
+			return g_snesPort1 == SNES_PORT_MOUSE;
+		if (index == SNES_AXIS_MOUSE2_X || index == SNES_AXIS_MOUSE2_Y)
+			return g_snesPort2 == SNES_PORT_MOUSE;
+		if (index == SNES_AXIS_SCOPE_X || index == SNES_AXIS_SCOPE_Y)
+			return g_snesPort2 == SNES_PORT_SCOPE;
+		return 0;
+	}
+	if (g_machine == M_SMS) {
+		if (index == SMS_AXIS_PHASER1_X || index == SMS_AXIS_PHASER1_Y)
+			return g_smsPort1 == SMS_PORT_PHASER;
+		if (index == SMS_AXIS_PHASER2_X || index == SMS_AXIS_PHASER2_Y)
+			return g_smsPort2 == SMS_PORT_PHASER;
+		return 0;
+	}
 	if (g_machine != M_NES)
 		return 0;
 	int fourScore = g_port1 == PORT1_FOUR_SCORE;

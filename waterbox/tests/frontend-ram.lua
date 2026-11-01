@@ -10,6 +10,8 @@
 --   shot=<optional path to write a screenshot>
 --   system=<the system id the project must have, NES when not given>
 --   domain=<the memory domain to dump, RAM when not given>
+--   hold=<buttons held on every frame, by name, comma separated>
+--   axes=<analog controls held at a value on every frame: name:value,...>
 
 local function writeAll(path, data)
 	local f = assert(io.open(path, "wb"))
@@ -65,9 +67,18 @@ if job.hold ~= nil and job.hold ~= "" then
 	end
 end
 
+-- job "axes=" names analog controls and their values (a mouse's movement, where
+-- a light gun points), set on EVERY frame
+local axes = {}
+if job.axes ~= nil and job.axes ~= "" then
+	for name, value in string.gmatch(job.axes, "([^,:]+):(-?%d+)") do
+		axes[name] = tonumber(value)
+	end
+end
+
 -- In Chimera's window the movie is what plays: a script's joypad.set reaches
 -- the core only while TAStudio is recording, so turn that on before holding.
-if next(held) ~= nil then
+if next(held) ~= nil or next(axes) ~= nil then
 	pcall(function() tastudio.setrecording(true) end)
 	if not tastudio.getrecording() then
 		finish("ERROR", "TAStudio would not record, so the held buttons cannot reach the core")
@@ -78,6 +89,9 @@ local frames = tonumber(job.frames) or 120
 for _ = 1, frames do
 	if next(held) ~= nil then
 		joypad.set(held)
+	end
+	if next(axes) ~= nil then
+		joypad.setanalog(axes)
 	end
 	emu.frameadvance()
 end

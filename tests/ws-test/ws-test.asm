@@ -13,9 +13,16 @@
 ;     reads the three groups of buttons (port $B5: the Y group, the X group,
 ;     then Start, A and B), and keeps them in RAM at $0100 (Y1-Y4 on bits
 ;     0-3), $0101 (X1-X4) and $0102 (Start on bit 1, A on bit 2, B on bit
-;     3), 1 for held; it counts frames at $0103;
+;     3), 1 for held; it counts frames at $0103, and keeps port $62 at
+;     $0104 (on a colour console, bit 7 is set on the SwanCrystal);
 ;   - the background's shade is the X group's bits and the Y group's, and
 ;     channel 1 plays at a frequency they give.
+; The program starts 16 bytes into the cartridge, where the Pocket Challenge
+; V2 starts (4000:0010; the WonderSwans start at the jump at the end), so
+; the same file is that machine's test too. On the Pocket Challenge V2 the
+; three groups hold its own buttons (Mesen's WsControlManager): Clear,
+; Circle and Pass on bits 0, 2 and 3 of the first; View, Esc and Right of
+; the second; Left, Down and Up of the third; bit 1 always set.
 ;
 ; This is our own program, written for this repository's tests; it is under
 ; the repository's licence.
@@ -23,6 +30,7 @@
 bits 16
 org 0
 
+	times 0x10 db 0x90       ; the Pocket Challenge V2 starts at offset $10
 start:
 	cli
 	xor ax, ax
@@ -80,6 +88,8 @@ main:
 	and al, 0x0F
 	mov [0x0102], al         ; Start, A, B
 	inc byte [0x0103]
+	in al, 0x62
+	mov [0x0104], al         ; the console's model (SwanCrystal: bit 7)
 	mov al, [0x0100]
 	shl al, 4
 	or al, [0x0101]

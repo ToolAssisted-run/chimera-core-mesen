@@ -20,9 +20,18 @@ the **Game Boy**, **Game Boy Color** and **Game Boy Advance** (with its
 BIOS), the **PC Engine / TurboGrafx-16**, **SuperGrafx** and **PC Engine
 CD** (a .cue and its image, with the System Card), the **Master System**,
 **Game Gear**, **SG-1000** and **ColecoVision** (with its BIOS), and the
-**WonderSwan** and **WonderSwan Color**. The Satellaview (.bs) and the
-Sufami Turbo (.st) are declared but not tried: no BIOS for them was at
-hand. An NES project made before keeps playing as it did.
+**WonderSwan**, **WonderSwan Color** (or SwanCrystal) and **Pocket Challenge
+V2**. The Satellaview (.bs) and the Sufami Turbo (.st) are declared but not
+tried: no BIOS for them was at hand. An NES project made before keeps
+playing as it did.
+
+Mesen's other controllers are offered too: the **Super NES Mouse** and the
+**Super Scope**, the Master System's **Light Phaser** and the PC Engine's
+six-button **Avenue Pad 6**, each a choice of a controller port setting;
+the mice and light guns follow your mouse. A **Game Boy Advance** game can
+skip the console's boot screen (**Skip Boot Screen**, off by default as in
+Mesen); a game still needs the BIOS, which only programs made to call none
+of it can do without (**BIOS: None**).
 
 ## Using it in Chimera
 

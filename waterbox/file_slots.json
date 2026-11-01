@@ -42,7 +42,8 @@
         "rom",
         "bin",
         "ws",
-        "wsc"
+        "wsc",
+        "pc2"
       ],
       "help": "slot.cart.help",
       "exposedWhen": {
@@ -60,7 +61,8 @@
           "sg1000",
           "coleco",
           "ws",
-          "wsc"
+          "wsc",
+          "pcv2"
         ]
       }
     },

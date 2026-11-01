@@ -1,5 +1,5 @@
 {
-  "_comment": "Default bindings for the controllers this package declares (the NES's, and one for each other machine): the frontend uses them for a controller the user's setup has never seen, and Config > Controls' Defaults button comes back to them. Player 1 of each is bound to keys and a gamepad; the other players are left unbound. The NES's Zapper and Arkanoid controller (in port 2 or in the Famicom's expansion port) follow the mouse: its place over the picture is where the Zapper points and where the knob is, its left button the trigger and the knob's button. Power and Reset are left unbound so that no key press restarts a run by accident.",
+  "_comment": "Default bindings for the controllers this package declares (the NES's, and one for each other machine): the frontend uses them for a controller the user's setup has never seen, and Config > Controls' Defaults button comes back to them. Player 1 of each is bound to keys and a gamepad; the other players' pads are left unbound. The light guns, knobs and mice follow the mouse, in whichever port they are: the NES's Zapper and Arkanoid controller (in port 2 or in the Famicom's expansion port), the Super NES's Super Scope and the Master System's Light Phaser point where the mouse is over the picture and fire with its left button (the Super Scope's Cursor is its right button, Turbo and Pause the keys T and P); the Super NES Mouse moves as the mouse moves, with its two buttons. The Avenue Pad 6's III to VI are C, A, S and D. Power and Reset are left unbound so that no key press restarts a run by accident.",
   "AllTrollers": {
     "NES Controller": {
       "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
@@ -27,7 +27,15 @@
       "P1 Y": "A, J1 B3, X1 X",
       "P1 X": "S, J1 B4, X1 Y",
       "P1 L": "Q, J1 B5, X1 LeftShoulder",
-      "P1 R": "W, J1 B6, X1 RightShoulder"
+      "P1 R": "W, J1 B6, X1 RightShoulder",
+      "P1 Mouse Left": "WMouse L",
+      "P1 Mouse Right": "WMouse R",
+      "P2 Super Scope Fire": "WMouse L",
+      "P2 Super Scope Cursor": "WMouse R",
+      "P2 Super Scope Turbo": "T",
+      "P2 Super Scope Pause": "P",
+      "P2 Mouse Left": "WMouse L",
+      "P2 Mouse Right": "WMouse R"
     },
     "Game Boy Controls": {
       "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
@@ -58,7 +66,9 @@
       "P1 Right": "Right, J1 POV0R, X1 DpadRight, X1 LStickRight",
       "P1 Button 1": "Z, J1 B1, X1 A",
       "P1 Button 2": "X, J1 B2, X1 B",
-      "Pause": "Enter, J1 B10, X1 Start"
+      "Pause": "Enter, J1 B10, X1 Start",
+      "P1 Trigger": "WMouse L",
+      "P2 Trigger": "WMouse L"
     },
     "Game Gear Controls": {
       "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
@@ -105,7 +115,11 @@
       "P1 II": "Z, J1 B1, X1 X",
       "P1 I": "X, J1 B2, X1 A",
       "P1 Select": "Space, J1 B9, X1 Back",
-      "P1 Run": "Enter, J1 B10, X1 Start"
+      "P1 Run": "Enter, J1 B10, X1 Start",
+      "P1 III": "C, J1 B3, X1 B",
+      "P1 IV": "A, J1 B4, X1 Y",
+      "P1 V": "S, J1 B5, X1 LeftShoulder",
+      "P1 VI": "D, J1 B6, X1 RightShoulder"
     },
     "WonderSwan Controls": {
       "P1 X1": "Up, J1 POV0U, X1 DpadUp",
@@ -119,6 +133,17 @@
       "P1 Start": "Enter, J1 B10, X1 Start",
       "P1 A": "X, J1 B2, X1 A",
       "P1 B": "Z, J1 B1, X1 X"
+    },
+    "Pocket Challenge V2 Controls": {
+      "P1 Up": "Up, J1 POV0U, X1 DpadUp, X1 LStickUp",
+      "P1 Down": "Down, J1 POV0D, X1 DpadDown, X1 LStickDown",
+      "P1 Left": "Left, J1 POV0L, X1 DpadLeft, X1 LStickLeft",
+      "P1 Right": "Right, J1 POV0R, X1 DpadRight, X1 LStickRight",
+      "P1 Clear": "X, J1 B2, X1 A",
+      "P1 Circle": "Z, J1 B1, X1 B",
+      "P1 Pass": "C, J1 B3, X1 X",
+      "P1 View": "Enter, J1 B10, X1 Start",
+      "P1 Esc": "Space, J1 B9, X1 Back"
     }
   },
   "AllTrollersAutoFire": {
@@ -156,6 +181,60 @@
       },
       "Expansion Paddle": {
         "Value": "WMouse X",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      }
+    },
+    "SNES Controller": {
+      "P1 Mouse X": {
+        "Value": "RMouse X",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P1 Mouse Y": {
+        "Value": "RMouse Y",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P2 Mouse X": {
+        "Value": "RMouse X",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P2 Mouse Y": {
+        "Value": "RMouse Y",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P2 Super Scope X": {
+        "Value": "WMouse X",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P2 Super Scope Y": {
+        "Value": "WMouse Y",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      }
+    },
+    "Master System Controller": {
+      "P1 Light Phaser X": {
+        "Value": "WMouse X",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P1 Light Phaser Y": {
+        "Value": "WMouse Y",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P2 Light Phaser X": {
+        "Value": "WMouse X",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "P2 Light Phaser Y": {
+        "Value": "WMouse Y",
         "Mult": 1.0,
         "Deadzone": 0.0
       }

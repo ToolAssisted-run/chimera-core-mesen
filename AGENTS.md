@@ -8,7 +8,10 @@ emulator built for miniBox), `waterbox.config`, `file_slots.json`,
 emulates (owner, 2026-10-31), as machines of the same package picked by
 the setting `machine`: the Super NES, Super Game Boy, Game Boy, Game Boy
 Color, Game Boy Advance, PC Engine, SuperGrafx, PC Engine CD, Master
-System, Game Gear, SG-1000, ColecoVision, WonderSwan and WonderSwan Color.
+System, Game Gear, SG-1000, ColecoVision, WonderSwan, WonderSwan Color (or
+SwanCrystal) and Pocket Challenge V2. Mesen's other controllers (the Super
+NES Mouse and Super Scope, the Light Phaser, the Avenue Pad 6) are choices
+of the port settings (owner, 2026-11-01).
 `docs/BUILDING.md` has every step; `docs/PLAN.md` the reasons and the state
 of the work.
 
@@ -36,12 +39,15 @@ of the work.
 - `waterbox/run-gate.sh` - the core test script; the other machines' checks
   are `waterbox/tests/systems.sh` (sourced by it) with
   `waterbox/tests/systems.py` (their schedules, movies and RAM checks).
+  `waterbox/tests/machine-devices.py` - the other machines' devices beyond
+  the pad: their schedules, movies and RAM checks.
   `waterbox/tests/` - the frontend test (`run-frontend.sh`) and its helpers.
 - `waterbox/waterbox.config`, `file_slots.json`, `default_keybinds.json`,
   `package-licenses.json`, `languages/` - the package's declarations.
 - `tests/roms/` - free homebrew, the EPSM test program, the input test
-  program and the other machines' test programs; `tests/epsm-test/`,
-  `tests/input-test/` and `tests/<system>-test/` build them; `tests/inputs/`
+  program and the other machines' test programs (the Game Boy Advance's runs
+  without a BIOS); `tests/epsm-test/`, `tests/input-test/` and
+  `tests/<system>-test/` build them; `tests/inputs/`
   - input schedules written here.
 - `build/` - every output (ignored by git).
 
@@ -52,12 +58,12 @@ MB=<chimera>/extern/chimera-common-minibox     # built with -Dguest_cpp=true in 
 git submodule update --init
 meson setup build/meson-native -Dminibox_dir="$MB" && ninja -C build/meson-native -j4
 sh waterbox/setup-guest.sh -m "$MB" && ninja -C build/meson-guest -j4
-./waterbox/run-gate.sh                                   # 129 ok, 0 failed, the engine and game checks skipped
+./waterbox/run-gate.sh                                   # 180 ok, 0 failed, the engine and game checks skipped
 ./waterbox/build-package.sh -m "$MB" -o build/Cores
 <chimera>/build/meson-linux/source/ui/test-packages build/Cores
-CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 151 ok, 0 failed (226 with every owner's file)
-./waterbox/tests/run-frontend.sh --chimera-root <chimera> [--qt-lib <Qt lib folder>]   # 22 ok (33 with the owner's files)
-python3 <chimera>/tools/check-core-texts.py .            # every key named
+CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 212 ok, 0 failed (289 with every owner's file)
+./waterbox/tests/run-frontend.sh --chimera-root <chimera> [--qt-lib <Qt lib folder>]   # 30 ok (41 with the owner's files)
+python3 <chimera>/tools/check-core-texts.py .            # every key named (186)
 ```
 
 `MESEN_CONTENT_DIR=<folder>` holding the owner's NES games and BIOS files

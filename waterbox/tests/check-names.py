@@ -44,6 +44,8 @@ NAMES = ["Mesen", "MesenCE", "NES", "iNES", "NES 2.0", "UNIF", "Famicom", "Ninte
          "ST010", "ST011", "ST018", "SameBoy", "PC Engine", "PC Engine CD", "TurboGrafx-16", "SuperGrafx",
          "ColecoVision", "Master System", "Game Gear", "SG-1000", "Sega", "WonderSwan", "WonderSwan Color", "Bandai",
          "NEC", "Hudson", "YM2413", "TurboTap", "Super CD-ROM System", "CD-ROM", "Games Express", "System Card",
+         # the devices and models added on 2026-11-01
+         "Super NES Mouse", "Super Scope", "Light Phaser", "Avenue Pad 6", "SwanCrystal", "Pocket Challenge V2",
          "Chimera", "TAStudio", "GitHub", "Lua", "Windows", "Linux", "macOS", "OpenGL", "Vulkan", "Direct3D", "SQLite",
          "miniBox", "ffmpeg", "Qt", "Wayland"]
 try:

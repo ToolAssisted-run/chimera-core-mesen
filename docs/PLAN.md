@@ -1472,7 +1472,7 @@ held flat); the WonderSwan's boot ROM; HuCard games with a CD unit
   "skip the boot screen" were offered as a setting (the BIOS would then
   not check Nintendo's logo): is that wanted?
 
-## Where this stands (2026-10-31, sixth round)
+## Where it stood after the sixth round (2026-10-31)
 
 Works, and is tested here on Linux against Chimera main cb46d2b7
 (`~/chimera-scratch-bump`):
@@ -1578,3 +1578,352 @@ runs the frames asked for:
 
 Sound was not compared on Windows, and no owner's game was run there.
 
+
+## The owner's decisions on the sixth round's questions (user-decided, 2026-11-01)
+
+The owner answered two of the sixth round's three questions (the BS-X and
+Sufami Turbo BIOS question is still open): "Keep extra controllers. Yes add
+a 'skip the GBA boot screen'". So:
+
+1. **The extra controllers and models are offered.** Mesen's controllers
+   and console models that the package left out are added: the Super NES
+   Mouse and the Super Scope, the Master System's Light Phaser, the PC
+   Engine's six-button pad (NEC's Avenue Pad 6), and the WonderSwan models
+   SwanCrystal and Pocket Challenge V2, then whatever else MesenCE emulates
+   at the pinned commit (the list is in "Controllers and models Mesen has
+   that the package does not offer" below). Each is a setting or a port
+   choice as the NES's Zapper, Arkanoid controller and Four Score are, with
+   its controls and default keys, lag and input polls as the other
+   controllers, its texts in the 26 language tables, and a test that fails
+   when the device is undone: a test program of this repository's own that
+   reads the device and keeps what it read in RAM (native == sandbox,
+   savestates every frame), and an owner's game that uses the device when
+   one is among the owner's files.
+2. **A setting skips the Game Boy Advance's boot screen**, Mesen's own
+   option (`GbaConfig.SkipBootScreen`, off by default in Mesen's UI, so off
+   by default here too). With it the Game Boy Advance gets a test program
+   of this repository's own, which runs on CI.
+
+
+## 2026-11-01: the Game Boy Advance's boot screen, and a test program of its own
+
+### What Mesen does
+
+- `GbaConfig.SkipBootScreen` (Mesen's "Skip boot screen", off by default
+  in Mesen's UI, `UI/Config/GbaConfig.cs`) starts the CPU at the cartridge
+  (0x08000000) in system mode, with the stack pointers and registers the
+  BIOS leaves (`GbaCpu::Init`), and sets the BIOS's open-bus value as it is
+  after the BIOS ran (`GbaMemoryManager`). The BIOS's logo screen and its
+  check of the cartridge's Nintendo logo are not run.
+- Mesen has no BIOS of its own (no high-level emulation of it): without
+  `gba_bios.bin` it runs a BIOS of zeros (`GbaConsole::LoadRom`). A game
+  calls the BIOS for some of its work (its SWI functions: division, memory
+  copies, decompression, waiting for an interrupt) and every interrupt goes
+  through the BIOS's handler. So **a BIOS is still required for every
+  commercial game**, boot screen skipped or not. Only a program that calls
+  no BIOS function and turns no interrupt on runs without one.
+
+### The settings
+
+- **Skip Boot Screen** (`gbaSkipBoot`, off or on): Mesen's option, **off by
+  default** because it is off by default in Mesen. On, the game starts at
+  once; Nintendo's BIOS is still needed.
+- **BIOS** (`gbaBios`): Nintendo's (`gba_bios.bin`, the default) or None.
+  None is for a program made to need no BIOS: the firmware is then not
+  required (its `requiredWhen` asks for `gbaBios` at `nintendo`), and the
+  boot screen is always skipped (nothing else could start the cartridge). A
+  game that calls the BIOS stops working with None; the setting's text
+  says so. A Game Boy Advance project made before has neither setting and
+  is the machine it was (both defaults are the old behaviour).
+
+### The test program
+
+`tests/gba-test/gba-test.s` (ARM code of our own) is assembled and linked
+with LLVM's tools (`clang-20 --target=armv4t-none-eabi`, `ld.lld-20`,
+`llvm-objcopy-20`: free, Apache-2.0 with LLVM exceptions, installed on this
+machine) by `tests/gba-test/make-gba-test.py`; the 32 KiB result is
+committed as `tests/roms/gba-test.gba`, so CI needs no ARM toolchain. Its
+header has no Nintendo logo (the BIOS is not run). Each frame (it waits for
+line 160 by reading VCOUNT, with no interrupt) it keeps the buttons, held =
+1, at EWRAM 0x02000000, counts frames at +4, shows the buttons as the
+backdrop colour and sounds them on channel 1, writes them into the
+cartridge's SRAM, and reads the cartridge's clock - an S-3511A behind the
+GPIO pins at 0x080000C4, which Mesen gives a cartridge whose ROM holds
+`SIIRTC_V001` - with its "date and time" command, keeping the seven bytes at
++0x10. It keeps the status register it started with at +8 (system mode,
+0x1F, when the boot screen was skipped).
+
+### Checks
+
+- `gba:*` on the test program with BIOS None (CI runs them): equivalence,
+  input, buttons (each of the ten buttons alone), savestate, turbo,
+  session, bus.
+- `gba:rtc` - **patch 0009 proved**: after 600 frames, with the host
+  stopped for 3 s at frame 300, the clock says 2000-01-01 00:00:10 in both
+  flavors (10.03 s of the machine's time).
+- `gba:skip-boot` (with the owner's BIOS, SKIP without): skipped, the
+  program runs from the first frame (599 of 600 counted) in system mode,
+  native == sandbox; not skipped, Nintendo's BIOS runs first and refuses the
+  logo-less cartridge, so the program never runs (0 frames).
+- `gba:bios-required` as before: with the default BIOS setting a game is
+  refused without `gba_bios.bin`.
+- `engine:gba-test` (the schedule as a Chimera movie through chimera-run
+  ends on the native reference's EWRAM, which holds the last buttons) and
+  `engine:gba-polls` (598 reads of the controls in 300 frames reach
+  Chimera's input-poll callback); in the window `gba:frontend` (L, A and Up
+  held) and `gba:keybinds`.
+
+Seen to fail, with a copy of the repository built broken on purpose in
+three places: patch 0009's build option left out (the clocks read the
+host's time again): `gba:rtc` failed - the native run's clock said
+00:00:04 (the run's real length with the 3 s stop), the sandbox's 00:00:00
+(the sandbox's own clock does not move) - and so did `gba:equivalence`;
+Skip Boot Screen ignored: `gba:skip-boot` failed (0 frames counted); the
+Game Boy Advance's L and R swapped: `gba:buttons` failed ("P1 read ['R'],
+not ['L']").
+
+### Found on the way: Clock Start does not reach the S-3511A
+
+Mesen's S-3511A (the clock of Game Boy Advance and WonderSwan cartridges)
+starts at 2000-01-01 00:00:00 when the cartridge has no saved clock, and
+counts the seconds of the machine's time from there (patch 0009). The
+setting **Clock Start** (`rtcStart`) moves the machine's time but not that
+starting date: with Clock Start at another date, the clock still starts at
+2000-01-01. The setting's default is 2000-01-01 00:00:00, so a project left
+at the default gets what the text says; one set to another date does not.
+Nothing was changed: making the core hand the S-3511A a saved clock at
+Clock Start (as Mesen loads a `.rtc` file) would change the machine of a
+project that set another date, so it is a question for the owner (below).
+
+## 2026-11-01: the Super NES Mouse, the Super Scope, the Light Phaser, the Avenue Pad 6, the SwanCrystal and the Pocket Challenge V2
+
+### What is offered
+
+| Machine | Setting | New choice | Controls (added at the end of the machine's wire) |
+| --- | --- | --- | --- |
+| Super NES, Super Game Boy | Controller Port 1 (`snesPort1`) | `mouse`: the Super NES Mouse | P1 Mouse Left, P1 Mouse Right; axes P1 Mouse X, P1 Mouse Y |
+| Super NES, Super Game Boy | Controller Port 2 (`snesPort2`) | `mouse`; `superScope`: the Super Scope | P2 Mouse Left, P2 Mouse Right, P2 Super Scope Fire, Cursor, Turbo, Pause; axes P2 Mouse X and Y, P2 Super Scope X and Y |
+| Master System | Controller Port 1 (`smsPort1`, new) | `lightPhaser`: the Light Phaser | P1 Trigger; axes P1 Light Phaser X and Y |
+| Master System | Controller Port 2 (`smsPort2`) | `lightPhaser` | P2 Trigger; axes P2 Light Phaser X and Y |
+| PC Engine, SuperGrafx, PC Engine CD | Controllers (`pcePad`, new) | `avenuePad6`: NEC's Avenue Pad 6, in the port or in each of the multitap's five places | P1 III, IV, V, VI ... P5 III, IV, V, VI |
+| WonderSwan Color | Console Model (`wscModel`, new) | `swanCrystal`: the SwanCrystal | - |
+| Pocket Challenge V2 (new machine `pcv2`, `.pc2` files) | - | - | Power; Up, Down, Left, Right, Clear, Circle, Pass, View, Esc |
+
+- The SG-1000 keeps its own Controller Port 2 (a pad or nothing): the Light
+  Phaser is the Master System's. The Super Scope is offered in port 2 only,
+  where it plugs in on the console.
+- The axes: a mouse's are its movement in the frame (-127 to 127 each way,
+  as far as the Super NES Mouse counts; Chimera's mouse movement, `RMouse X`
+  and `RMouse Y`, by default); a light gun's are where it points, 0 to
+  65535 across the picture shown (Chimera's mouse place, `WMouse X` and
+  `WMouse Y`, by default), turned into the console's pixels the way Mesen's
+  own UI turns the mouse's place into them (`KeyManager::SetMousePosition`):
+  the Super NES's 256 x 224 below the 7 lines the overscan hides, the
+  Master System's 256 x 192 below 24. (A Super NES game in its 512-pixel
+  wide mode is not handled differently; Mesen's UI would give it pixels
+  twice as many.)
+- Default keys: the mice move with the mouse and click with its buttons;
+  the Super Scope and the Light Phaser point where the mouse is and fire
+  with its left button (the Super Scope's Cursor is the right button, Turbo
+  and Pause the keys T and P); the Avenue Pad 6's III to VI are C, A, S and
+  D (and gamepad buttons); the Pocket Challenge V2's buttons are the
+  WonderSwan's keys.
+- Letters in movies: Mouse Left `m`, Mouse Right `n`, the Super Scope's
+  Fire `F`, Cursor `C`, Turbo `T`, Pause `p`, the Light Phaser's Trigger
+  `T`, III to VI `3` to `6`, the Pocket Challenge V2's Clear `c`, Circle
+  `o`, Pass `p`, View `v`, Esc `e`. Each control is in its player's group;
+  `IsButtonActive` and `IsAxisActive` give a movie only the controls the
+  ports hold, so a project made before keeps its movie's columns.
+- The Light Phaser in port 1 still carries the console's Pause button (read
+  from port 1's device in Mesen).
+- The SwanCrystal's boot ROM is its own file (`bootrom_sc.wsc`, Mesen's
+  name), asked for with Boot ROM on and the SwanCrystal chosen; nobody here
+  has it, so it was never run.
+- The Pocket Challenge V2 starts its cartridge at 4000:0010 and has its own
+  nine buttons (Mesen's `Pcv2Controller`); its files are `.pc2`, and the
+  machine gives Mesen any other file under that extension.
+
+### When a program sees the controls
+
+Mesen takes a frame's controls at the frame's end, and the test programs
+read them in the next frame's vertical blank, so a program's RAM after a
+run shows the controls of the frame before the last one. The device checks
+read the schedule there (the pads' checks hold each button for 8 frames
+and never saw it).
+
+### The test programs
+
+- `tests/roms/snes-devices.sfc` (`make-snes-test.py`, the Super NES test
+  program reading the ports for a mouse and the Super Scope): after the
+  automatic read, 16 more bits by hand from each port (a mouse's movement
+  bytes), and the beam position the picture chip latched ($213F, $213C and
+  $213D: Mesen latches where the Super Scope points, at x + 10 and y - 3,
+  when Fire or Cursor is held).
+- `tests/roms/sms-phaser.sms` (`make-sms-test.py`): a white screen; the
+  ports' TH lines set as inputs; each frame it reads $DD as fast as it can
+  until a gun sees light, and keeps the line (the V counter), the byte and
+  the H counter the gun latched (Mesen: x + 38, kept in 8 bits), and the
+  trigger bits.
+- `tests/roms/pce-pad6.pce` (`make-pce-test.py`): the PC Engine program
+  reading the port twice a frame; each reset of the port switches an
+  Avenue Pad 6 between its usual half and its III to VI half (which has no
+  direction held, the six-button signature).
+- `tests/roms/ws-test.ws` now starts 16 bytes into the cartridge, where the
+  Pocket Challenge V2 starts, so it is that machine's test too, and keeps
+  port $62 (bit 7 set on the SwanCrystal) at $0104. The WonderSwan checks
+  pass on it as before.
+
+### Checks
+
+- `<device>:equivalence`, `:input`, `:buttons`, `:savestate`, `:session`
+  for `snesMouse1`, `snesMouse2`, `superScope`, `lightPhaser1`,
+  `lightPhaser2`, `avenuePad6` and `avenuePad6Tap` (five Avenue Pad 6s
+  through the multitap) - `waterbox/tests/machine-devices.py` writes the
+  schedules (every control moving: the mice's movement of every size both
+  ways, the guns across the picture) and reads the RAM back: the mouse's
+  signature, buttons, movement and the direction flags it keeps; the Super
+  Scope's bits (Fire on a press, Turbo's mode, Pause on a press, Cursor
+  held) and the beam position latched where it pointed; the Light Phaser's
+  trigger, the line it saw light on (the line it points at or one of the
+  five after it, Mesen's rule) and its H counter; each Avenue Pad 6's
+  twelve buttons. The same schedule with plain pads in the device's place
+  reads otherwise.
+- `pcv2:*` (the seven program checks on the Pocket Challenge V2),
+  `wsc:swancrystal` (the SwanCrystal's mark read on the SwanCrystal and not
+  on the WonderSwan Color, on the same file).
+- Through chimera-run: `engine:<device>` for each (a 240-frame movie of the
+  device made into a project and replayed by another chimera-run ends on
+  the native reference's RAM, the RAM shows the controls, and the device's
+  reads reach Chimera's input-poll callback: 9560 in 240 frames on the Super
+  NES, 85455 for the Light Phaser program, which polls without pause, 4780
+  for the Avenue Pad 6), `engine:pcv2`.
+- In the window: `snesMouse:frontend`, `superScope:frontend`,
+  `lightPhaser:frontend`, `avenuePad6:frontend` (the device's buttons held
+  and its axes set through the window's Lua, with TAStudio recording:
+  RAM == native and shows them), `pcv2:frontend`, `pcv2:keybinds`, and the
+  Super NES's and Master System's key checks now include the new controls'
+  bindings (6 and 4 analog bindings).
+- The owner's games: **Arkanoid - Doh It Again**
+  (`snes:game:arkanoid-mouse`): a pad in port 1 (the pad exercise reaches a
+  two-player game) and the mouse in port 2 moving right all the time in one
+  run and left in the other: the second player's paddle ends at x 214 and
+  at x 167; each run native == sandbox == saved and loaded each frame.
+  **Lemmings** was tried with the mouse in port 1 (clicking) and in port 2
+  (with the pad exercise, 4800 frames): its RAM was the same whichever way
+  the mouse moved, so it is not a check (it may take the mouse later in the
+  game). None of the owner's files is a Super Scope, Light Phaser, Avenue
+  Pad 6, SwanCrystal or Pocket Challenge V2 game.
+
+Seen to fail, with a copy of the repository built broken on purpose in
+seven places at once: the mouse's X and Y swapped (`snesMouse1:input`,
+`snesMouse2:input`, `engine:snesMouse1`, `snesMouse:frontend`, and the
+Arkanoid check: the paddle at x 179 both ways); the Super Scope's Fire and
+Cursor swapped (`superScope:buttons`, `superScope:frontend`); the Light
+Phaser's Y taken from its X (`lightPhaser1:input`, `lightPhaser2:input`,
+`engine:lightPhaser2`, `lightPhaser:frontend`); the Avenue Pad 6's III and
+IV swapped (`avenuePad6:buttons`, `avenuePad6Tap:input` and `:buttons`,
+`avenuePad6:frontend`); the SwanCrystal setting ignored
+(`wsc:swancrystal`); the Pocket Challenge V2's Clear and Circle swapped
+(`pcv2:input`, `pcv2:buttons`, `engine:pcv2`, and `pcv2:frontend` once it
+held Circle: the first version held Pass, View and Left and passed); the
+Super Scope's axes said inactive (`engine:superScope`: the movie ends on
+another RAM). `superScope:input` and `avenuePad6:input` passed with their
+breaks (the schedule's frame they look at held both swapped buttons alike);
+their `:buttons` checks caught them.
+
+### Measured at the end of this step
+
+`run-gate.sh` 180 ok with neither Chimera nor the owner's files (129
+before), 212 ok with Chimera (151), 289 ok with Chimera, MESEN_CONTENT_DIR,
+MESEN_SYSTEMS_CONTENT and MESEN_PUBLISHED_PACKAGE (226), 0 failed, only
+FamiStudio's checks skipped; `run-frontend.sh` 30 ok without the owner's
+files, 41 with them; `test-packages` PASS (0 failed); `check-core-texts.py`
+186 keys; `check-names.py` 0 in 26 tables; Chimera's `check-proper-nouns.py`
+0. Tested against Chimera main cb46d2b7 (`~/chimera-scratch-bump`).
+
+`MESEN_PUBLISHED_PACKAGE` was not the file as published (none was on this
+machine): it was rebuilt here from the published commit a874aa5 (its
+`core.wbx` from that commit's sources, Mesen's tree with this round's
+patches applied, all of them build options that commit's build leaves off;
+`CORE_VERSION=a874aa55`). `nes:published` and `engine:nes-published` pass
+with it.
+
+## 2026-11-01: controllers and models Mesen has that the package does not offer
+
+From MesenCE's source at the pin (`Core/Shared/SettingTypes.h`,
+`ControllerType` and the model enums, and each console's control manager),
+what the package still leaves out after this round:
+
+- **NES, controller ports**: the Power Pad (sides A and B), the Subor
+  mouse, the Virtual Boy controller (used by NES homebrew).
+- **NES, Famicom expansion port**: the Family Trainer mat (sides A and B),
+  Konami's Hyper Shot, Bandai's Hyper Shot, the Oeka Kids tablet, the Party
+  Tap, the Pachinko controller, the Exciting Boxing punching bag, the Jissen
+  Mahjong controller, the Hori Track, the two-player adapter (the
+  four-player adapter's other mode), the FCNS controller, the Family BASIC
+  keyboard (with its data recorder), the Subor keyboard, the Barcode
+  Battler, ASCII's Turbo File and Bandai's Battle Box (the last two keep
+  data outside the machine).
+- **NES, devices on the cartridge**: the Bandai microphone and the Datach
+  barcode reader.
+- **NES models**: the console type (NES-001, the default and the only one
+  offered; the NES-101, the Famicom HVC-001 and the AV Famicom HVC-101).
+- **Super NES**: the NTT Data Keypad, the rumble controller and the
+  BlueRetro adapter's (pads whose rumble Chimera has no use for), ASCII's
+  Turbo File Twin (data outside the machine).
+- **Game Boy**: the tilt sensor of MBC7 cartridges (Kirby Tilt 'n'
+  Tumble), which Mesen reads from the host's joystick; **Game Boy
+  Advance**: the tilt sensor of two cartridges (KYGE and KHPJ), the same.
+- **Master System**: the console revision (Mesen's Compatibility, the
+  default kept here; SMS 1 and SMS 2); **PC Engine CD**: the CD-ROM type
+  (CD-ROM2, Super CD-ROM2; the core keeps the Arcade Card's, which plays
+  them all).
+
+What the next step takes from this list is said where it is done.
+
+## Questions for the owner (2026-11-01)
+
+- Clock Start does not set the date the S-3511A (Game Boy Advance and
+  WonderSwan cartridges) starts at; it always starts at 2000-01-01, the
+  setting's default. Should the core start that clock at Clock Start
+  (which changes the machine of a project that set another date), or should
+  the setting's text say that it does not reach those cartridges?
+- Still open from the sixth round: the BS-X BIOS (Satellaview) and the
+  Sufami Turbo BIOS and a game for it.
+
+## Where this stands (2026-11-01)
+
+Works, and is tested here on Linux against Chimera main cb46d2b7
+(`~/chimera-scratch-bump`):
+
+- Everything the sixth round left; the NES machine is still the published
+  one (`nes:published`, `engine:nes-published`, against the published
+  commit rebuilt here).
+- New: the Game Boy Advance's **Skip Boot Screen** and **BIOS: None**
+  settings, and its test program, which runs on CI without a BIOS and
+  proves patch 0009 (`gba:rtc`).
+- New: the **Super NES Mouse** (either port) and **Super Scope** (port 2),
+  the Master System's **Light Phaser** (either port), the PC Engine's
+  **Avenue Pad 6** (in the port or the multitap), the **SwanCrystal** model
+  and the **Pocket Challenge V2** machine, each with a test program of this
+  repository's own, checks native == sandbox with savestates, through
+  chimera-run's movies and in the window, and its texts in 26 languages.
+  Arkanoid - Doh It Again plays with the mouse.
+- Counts: `run-gate.sh` 180 / 212 / 289 ok (neither Chimera nor the
+  owner's files / Chimera / everything), `run-frontend.sh` 30 / 41 ok,
+  `test-packages` PASS, 186 text keys.
+
+Not done, or not proved:
+
+- The controllers and models of the list above.
+- No owner's game uses the Super Scope, the Light Phaser, the Avenue Pad 6,
+  the SwanCrystal or the Pocket Challenge V2; they are proved on this
+  repository's programs only. Lemmings did not answer the mouse in the runs
+  tried.
+- A Super NES game in its 512-pixel wide mode: the Super Scope's place is
+  turned into the 256-pixel picture's pixels (Mesen's UI would give twice
+  as many). The Light Phaser on a PAL Master System and in the 224- and
+  240-line modes was not tried.
+- Clock Start does not reach the S-3511A (question above).
+- The Satellaview and the Sufami Turbo, as before. No Windows run of this
+  round; CI has not run it.

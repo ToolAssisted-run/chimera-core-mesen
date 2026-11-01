@@ -48,4 +48,19 @@ The input schedules in `tests/inputs/` were written for this repository.
 - `ws-test.ws` - this repository's own WonderSwan test program, built from
   `tests/ws-test/ws-test.asm` by `tests/ws-test/make-ws-test.py` (with
   nasm): it keeps the three groups of buttons in RAM and shows and sounds
-  them. It is both WonderSwan machines' test.
+  them, and notes the SwanCrystal's mark. It is the test of both WonderSwan
+  machines and of the Pocket Challenge V2 (it starts where that console
+  starts a cartridge).
+- `gba-test.gba` - this repository's own Game Boy Advance test program,
+  built from `tests/gba-test/gba-test.s` by `tests/gba-test/make-gba-test.py`
+  (with LLVM's clang, ld.lld and llvm-objcopy): it keeps the buttons and
+  the cartridge clock's date and time in RAM, and shows and sounds the
+  buttons. It needs no BIOS and holds no Nintendo logo.
+- `snes-devices.sfc` - the Super NES test program reading the Super NES
+  Mouse and the Super Scope, built by `tests/snes-test/make-snes-test.py`.
+- `sms-phaser.sms` - a Master System program of this repository's own for
+  the Light Phaser (a white screen, and where the gun sees light), built by
+  `tests/sms-test/make-sms-test.py`.
+- `pce-pad6.pce` - the PC Engine test program reading the port twice a
+  frame, for the six-button Avenue Pad 6, built by
+  `tests/pce-test/make-pce-test.py`.
