@@ -10,7 +10,7 @@ common noun beside the name instead ("emulatoru Mesen", "Mesen-emulaattorin",
 grammar and leaves the name whole; a compound joined by a hyphen
 ("NES-Spiel", "EPSM-rummut") leaves it whole too.
 
-Chimera's tools/check-proper-nouns.py knows only Chimera's own names; this
+Chimera's contract tests (test-packages) know only Chimera's own names; this
 knows this core's as well (NAMES below, and the coreName of
 waterbox.config), and also catches the endings that a sign joins to a name:
 "YMF288:n", "EPSM's", "Mesen'in", "EPSM-et".
@@ -35,7 +35,7 @@ import sys
 here = os.path.dirname(os.path.abspath(__file__))
 folder = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "languages")
 
-# This core's names, then Chimera's (tools/check-proper-nouns.py).
+# This core's names, then Chimera's (as Chimera's contract tests know them).
 NAMES = ["Mesen", "MesenCE", "NES", "iNES", "NES 2.0", "UNIF", "Famicom", "Nintendo", "EPSM", "YMF288", "YM2608",
          "Yamaha", "Dendy", "NTSC", "PAL", "Zapper", "Four Score", "Arkanoid", "Vaus", "Taito", "Disk System", "BIOS",
          # the other machines (2026-10-31)

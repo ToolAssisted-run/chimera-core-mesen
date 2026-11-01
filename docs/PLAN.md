@@ -400,8 +400,10 @@ Zapper, Four Score, Arkanoid, Vaus, Taito, and the package's coreName) and
 Chimera's. File names (`ym2608_adpcm_rom.bin`) are not names in a sentence.
 It was run with one bent text left (Swedish `suggest.epsm`, "YMF288:s") and
 `run-gate.sh` failed on it (34 ok, 1 failed); with that text fixed it passes.
-`texts:chimera` runs Chimera's `check-core-texts.py` and
-`check-proper-nouns.py` too when `CHIMERA_ROOT` is given.
+`texts:chimera` runs Chimera's `check-core-texts.py` when `CHIMERA_ROOT`
+is given. (It ran Chimera's `check-proper-nouns.py` too, until Chimera
+8ee74abf moved that check into its contract tests, `test-packages`, which
+CI runs on the package.)
 
 ## 2026-10-31: the Four Score, the Zapper and the Arkanoid controller
 

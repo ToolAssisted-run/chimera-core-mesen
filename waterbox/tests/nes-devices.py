@@ -635,7 +635,9 @@ def check(dev, lines, ram):
         print("byte %d read %02x, not %02x (the device's bits %02x); %d bytes differ" % (
             i, got[i], want[i] & mask[i] | (got[i] & ~mask[i] & 0xFF), mask[i], len(bad)))
         return False
-    print("the cartridge read what the device answers: %s" % " ".join("%02x" % (got[i] & mask[i]) for i in range(min(8, len(want)))))
+    on = [i for i in range(len(want)) if got[i] & mask[i]]
+    print("the cartridge read what the device answers: %d reads checked, %d of them with the device's bit set (reads %s)" % (
+        sum(1 for m in mask if m), len(on), ",".join(str(i) for i in on[:8]) or "none"))
     return True
 
 

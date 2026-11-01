@@ -886,23 +886,24 @@ if nm_out="$(python3 -I "$here/tests/check-names.py" "$here/languages" 2>&1)"; t
 else
 	report "texts:names" FAIL "$(printf '%s' "$nm_out" | grep -v 'bent or missing names in' | short)"
 fi
-# Chimera's own checks of a core's texts, when a Chimera checkout is given:
-# every key named and every name a key, and Chimera's names unbent. The text
-# check reads every source under the folder it is given, and CI checks Chimera
-# out inside this repository (chimera-checkout/), so it is given a copy of
-# this repository's own files only (the ones git tracks, upstream left out).
+# Chimera's own check of a core's texts, when a Chimera checkout is given:
+# every key named and every name a key. It reads every source under the
+# folder it is given, and CI checks Chimera out inside this repository
+# (chimera-checkout/), so it is given a copy of this repository's own files
+# only (the ones git tracks, upstream left out). Chimera's names (Chimera,
+# Windows...) unbent in every table is checked by Chimera's contract tests
+# (test-packages), which CI runs on the package.
 ct="${CHIMERA_ROOT:-}/tools/check-core-texts.py"
-pn="${CHIMERA_ROOT:-}/tools/check-proper-nouns.py"
-if [ -n "${CHIMERA_ROOT:-}" ] && [ -f "$ct" ] && [ -f "$pn" ]; then
-	mkdir -p "$work/own-files"
+if [ -n "${CHIMERA_ROOT:-}" ] && [ -f "$ct" ]; then
+	rm -rf "${work:?}/own-files" && mkdir -p "$work/own-files"
 	(cd "$root" && git ls-files -z | grep -z -v '^extern/' | xargs -0 cp --parents -t "$work/own-files")
-	if ct_out="$(python3 -I "$ct" "$work/own-files" 2>&1)" && pn_out="$(python3 -I "$pn" "$here" 2>&1)"; then
-		report "texts:chimera" PASS "$(printf '%s' "$ct_out" | tail -1); $(printf '%s' "$pn_out" | tail -1)"
+	if ct_out="$(python3 -I "$ct" "$work/own-files" 2>&1)"; then
+		report "texts:chimera" PASS "$(printf '%s' "$ct_out" | tail -1)"
 	else
-		report "texts:chimera" FAIL "$(printf '%s %s' "${ct_out:-}" "${pn_out:-}" | short)"
+		report "texts:chimera" FAIL "$(printf '%s' "${ct_out:-}" | short)"
 	fi
 else
-	report "texts:chimera" SKIP "needs CHIMERA_ROOT with tools/check-core-texts.py and tools/check-proper-nouns.py"
+	report "texts:chimera" SKIP "needs CHIMERA_ROOT with tools/check-core-texts.py"
 fi
 
 # ---------------------------------------------------------------- Chimera's engine
