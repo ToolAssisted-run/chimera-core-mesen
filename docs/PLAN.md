@@ -1895,11 +1895,12 @@ What the next step took from this list is in the next section.
 
 ## Where this stands (2026-11-01, after the second round of devices)
 
-Works, and is tested here on Linux against Chimera main cb46d2b7
-(`~/chimera-scratch-bump`). Three commits are local and not pushed or
-published: Clock Start for every cartridge clock (85a4347), the NES's
-remaining devices, keyboards and console types (5a72422), and the other
-machines' remaining devices and models (the commit after them).
+Works, and is tested here on Linux against Chimera main 14037f6e
+(`~/chimera-scratch-bump`) and on Windows. Pushed on 2026-11-01: Clock
+Start for every cartridge clock (85a4347), the NES's remaining devices,
+keyboards and console types (5a72422), the other machines' remaining
+devices and models (c3ce16a), and the text check on Chimera's main
+(8bc0894).
 
 - Everything the sixth round left; the NES machine is still the published
   one (`nes:published`, `engine:nes-published`, against Nightly 2026-11-01,
@@ -1925,7 +1926,11 @@ machines' remaining devices and models (the commit after them).
 - Counts: `run-gate.sh` 287 / 328 / 406 ok (neither Chimera
   nor the owner's files / Chimera / everything; only FamiStudio's checks
   skipped), `run-frontend.sh` 45 / 56 ok, `test-packages` PASS, 224
-  text keys.
+  text keys. Against Chimera 14037f6e: 405 ok with everything before
+  8bc0894 (`texts:chimera` skipped; see the last section), 56 ok in the
+  window.
+- On Windows, 32 projects of the new devices, clocks and models end on
+  the same memory as on Linux (the last section).
 
 Not done, or not proved:
 
@@ -1947,8 +1952,8 @@ Not done, or not proved:
 - A Super NES game in its 512-pixel wide mode: the Super Scope's place is
   turned into the 256-pixel picture's pixels. The Light Phaser on a PAL
   Master System and in the 224- and 240-line modes was not tried.
-- The Satellaview and the Sufami Turbo, as before. No Windows run of the
-  three local commits; CI has not run them.
+- The Satellaview and the Sufami Turbo, as before. The PC Engine CD's
+  CD-ROM Card was not run on Windows (it needs the owner's System Card).
 
 ## 2026-11-01: the Power Pad, the Family Trainer, Konami's Hyper Shot and the Party Tap
 
@@ -2441,3 +2446,38 @@ always the default): failed `nttKeypadSnes1:input` and `:buttons`,
 build, as they should: they compare the two builds with each other. The
 package built again from the restored source has the same SHA-1 as the
 one tested (9157828e).
+
+## 2026-11-01: Chimera's main and Windows, for the third round
+
+Chimera's main moved to 14037f6e (miniBox 0266ed5: a core's own tools,
+and the proper-noun rule inside Chimera's contract tests). The package
+built there (sha1 4d91529e) with the three commits: `run-gate.sh` with
+the owner's files and the published package (2b7d3881) 405 ok, 0 failed;
+`run-frontend.sh` 56 ok; `test-packages` PASS. `texts:chimera` was
+skipped: it asked for `tools/check-proper-nouns.py`, which Chimera
+8ee74abf removed (its check is now in `test-packages`). It runs
+`check-core-texts.py` alone now; that part run by itself passes (224
+keys), fails with a checker that fails and skips without a Chimera
+checkout. The window's NES device checks now say how many reads they
+compared and how many carried the device's bit (the keypad in port 2: 96
+and 12; the mahjong controller: 24 and 2); they printed the first 8
+bytes, which for a device in port 2 are the other port's.
+
+Windows, run by the owner's session before pushing, with chimera-run.exe of
+the published Chimera for Windows (Development build cb46d2b7): projects
+made with chimera-run --new-project from each device's 240-frame test
+schedule as a movie, and the clock and model projects with no input, run
+with recording on, the frames read from each --meta:
+
+- the 22 NES devices (RAM, 240 frames each), the Super NES keypad in
+  either port and the BlueRetro adapter (WRAM), the Game Boy tilt (WRAM)
+  and the Game Boy Advance tilt (EWRAM), 240 frames each;
+- Clock Start 2026-11-01 13:45:30 on the Game Boy Advance (EWRAM), Game
+  Boy (WRAM) and WonderSwan (Work RAM) clock programs, 600 frames: the
+  clocks read 2026-11-01 13:45:40, 13:45:40 and 13:45:37 on Windows, as
+  `clocks.py expect` gives;
+- the Master System 1 and 2 on `sms-model.sms` (Work RAM, 300 frames;
+  the two differ).
+
+All 32 end on the same memory on Windows as on Linux. Sound was not
+compared, and the PC Engine CD's card was not run there.
