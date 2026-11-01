@@ -1879,7 +1879,7 @@ what the package still leaves out after this round:
   (CD-ROM2, Super CD-ROM2; the core keeps the Arcade Card's, which plays
   them all).
 
-What the next step takes from this list is said where it is done.
+What the next step took from this list is in the next section.
 
 ## Questions for the owner (2026-11-01)
 
@@ -1909,13 +1909,27 @@ Works, and is tested here on Linux against Chimera main cb46d2b7
   repository's own, checks native == sandbox with savestates, through
   chimera-run's movies and in the window, and its texts in 26 languages.
   Arkanoid - Doh It Again plays with the mouse.
-- Counts: `run-gate.sh` 180 / 212 / 289 ok (neither Chimera nor the
-  owner's files / Chimera / everything), `run-frontend.sh` 30 / 41 ok,
-  `test-packages` PASS, 186 text keys.
+- New in a second step: the NES's **Power Pad** (port 2, both sides) and,
+  on the expansion port, the **Family Trainer** mat (both sides), Konami's
+  **Hyper Shot** and the **Party Tap**, read by the NES input test program.
+- Counts: `run-gate.sh` 192 / 224 / 301 ok (neither Chimera nor the
+  owner's files / Chimera / everything; only FamiStudio's checks skipped),
+  `run-frontend.sh` 32 / 43 ok, `test-packages` PASS, 192 text keys.
 
 Not done, or not proved:
 
-- The controllers and models of the list above.
+- The controllers and models of the list above, less the four NES
+  devices of the second step: the Subor mouse, the Virtual Boy controller,
+  Bandai's Hyper Shot, the Oeka Kids tablet, the Pachinko controller, the
+  Exciting Boxing bag, the Jissen Mahjong controller, the Hori Track, the
+  two-player adapter, the FCNS controller, the two keyboards, the Barcode
+  Battler, the Turbo Files and Battle Box, the Bandai microphone and Datach
+  reader, the NES console types, the Super NES NTT Data Keypad and rumble
+  pads, the Game Boy's and Game Boy Advance's tilt sensors, the Master
+  System's revisions and the PC Engine CD's CD-ROM types. Most need a test
+  program that talks their protocol (the input test program only strobes
+  and reads); the keyboards add 72 and 99 keys to the NES's wire, a size
+  worth the owner's word first.
 - No owner's game uses the Super Scope, the Light Phaser, the Avenue Pad 6,
   the SwanCrystal or the Pocket Challenge V2; they are proved on this
   repository's programs only. Lemmings did not answer the mouse in the runs
@@ -1927,3 +1941,49 @@ Not done, or not proved:
 - Clock Start does not reach the S-3511A (question above).
 - The Satellaview and the Sufami Turbo, as before. No Windows run of this
   round; CI has not run it.
+
+## 2026-11-01: the Power Pad, the Family Trainer, Konami's Hyper Shot and the Party Tap
+
+From the list above, the NES devices made only of buttons, which this
+repository's input test cartridge (`tests/roms/input-test.nes`) can read as
+it is: it keeps 24 raw reads of $4017 a frame.
+
+- **Controller Port 2** gains the **Power Pad**, side A or side B
+  (`powerPadA`, `powerPadB`): controls P2 Mat 1 to P2 Mat 12, in player 2's
+  group, numbered as the squares are printed on the mat (Mesen's keys 1 to
+  12; on side B Mesen turns each row the other way, as the mat's other side
+  is).
+- **Expansion Port** gains the **Family Trainer** mat, side A or B
+  (`familyTrainerA`, `familyTrainerB`: Expansion Mat 1 to 12), **Konami's
+  Hyper Shot** (`konamiHyperShot`: Expansion Hyper Shot 1 Run, 1 Jump, 2
+  Run, 2 Jump) and the **Party Tap** (`partyTap`: Expansion Party Tap 1 to
+  6), in the console's group as the expansion port's other controls.
+- The wire grows from 41 to 75 buttons, after everything before, so a
+  movie made before keeps its columns; `IsButtonActive` gives only the
+  device plugged in. Letters: the mats' squares `1` to `9`, `0`, `-`, `=`;
+  the Hyper Shot `q w o i`; the Party Tap `! @ # $ % ^`. Default keys: the
+  squares U I O P / J K L ; / M , . / (three rows of four), the Hyper Shot's
+  and the Party Tap's buttons the number keys.
+- The harness's NES input lines gained `bN` in their `@` field (the wire's
+  button N).
+
+Checks (`run-gate.sh`): `dev:<device>` for the six (as the other NES
+devices: a 240-frame schedule, native == sandbox == saved and loaded every
+frame, the RAM shows the last frame's buttons, a plain pad reads
+otherwise), `dev:<device>-buttons` (each button alone gives exactly the
+reads of $4017 Mesen's device gives for it: the Power Pad's two serial
+lines in its order "2, 1, 5, 9, 6, 10, 11, 7" and "4, 3, 12, 8", the
+Family Trainer's four columns, the Hyper Shot's four bits, the Party Tap's
+two three-bit reads and its signature), `engine:devices` (the twelve NES
+devices' movies through chimera-run), and in the window `powerPad:frontend`
+(squares 3 and 10 held) and `hyperShot:frontend` (player 1's Jump and
+player 2's Run).
+
+Seen to fail, with the copy built broken in four places: side B read as
+side A (`dev:powerPadB`, `dev:powerPadB-buttons`), the Hyper Shot's player
+1 Run and Jump swapped (`dev:konamiHyperShot` and `-buttons`), the Party
+Tap's sixth button not passed on (`dev:partyTap` and `-buttons`), the
+Family Trainer's squares said inactive (`engine:devices`): 217 ok, 7
+failed with Chimera.
+
+None of the owner's files uses these devices; no game was tried.

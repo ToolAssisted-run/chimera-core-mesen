@@ -7,9 +7,11 @@ sandbox and packaged for [Chimera](https://github.com/ToolAssisted-run/chimera),
 a frontend for tool-assisted speedruns. It runs NES and Famicom Disk System
 games, with Mesen's accuracy and the **EPSM** sound expansion (a Yamaha YMF288 on the Famicom's
 expansion port) that some new NES games use. The controller ports hold a
-pad, the Four Score (four players), the Zapper or the Arkanoid controller;
-the Famicom's expansion port holds its own Zapper, its Arkanoid controller
-or the four-player adapter.
+pad, the Four Score (four players), the Zapper, the Arkanoid controller or
+the Power Pad;
+the Famicom's expansion port holds its own Zapper, its Arkanoid controller,
+the four-player adapter, the Family Trainer mat, Konami's Hyper Shot or
+the Party Tap.
 
 Every other system Mesen emulates is offered by the same package (the
 owner's decision, `docs/PLAN.md`): a project's **Console** setting picks
@@ -27,8 +29,8 @@ playing as it did.
 
 Mesen's other controllers are offered too: the **Super NES Mouse** and the
 **Super Scope**, the Master System's **Light Phaser** and the PC Engine's
-six-button **Avenue Pad 6**, each a choice of a controller port setting;
-the mice and light guns follow your mouse. A **Game Boy Advance** game can
+six-button **Avenue Pad 6**, each a choice of a port setting; the mice and
+light guns follow your mouse. A **Game Boy Advance** game can
 skip the console's boot screen (**Skip Boot Screen**, off by default as in
 Mesen); a game still needs the BIOS, which only programs made to call none
 of it can do without (**BIOS: None**).

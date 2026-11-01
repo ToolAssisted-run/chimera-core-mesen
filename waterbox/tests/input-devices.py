@@ -4,9 +4,15 @@
 
     input-devices.py schedule <device> <out.inputs>
         the run-native/run-wbx input file for <device>: fourScore, zapper,
-        arkanoid, and the Famicom expansion port's famicomZapper,
-        famicomArkanoid and fourPlayerAdapter (240 frames, every control
-        moving)
+        arkanoid, powerPadA, powerPadB, and the Famicom expansion port's
+        famicomZapper, famicomArkanoid, fourPlayerAdapter, familyTrainerA,
+        familyTrainerB, konamiHyperShot and partyTap (240 frames, every
+        control moving)
+    input-devices.py column <device> <index> <out.inputs>
+        the device's button <index> alone held for the last 30 of 120
+        frames (the button devices: the mats, the Hyper Shot, the Party Tap)
+    input-devices.py buttons <device>
+        how many buttons a button device has
     input-devices.py movie <device> <in.inputs> <out.txt>
         (<device> may also be "pad", a pad in port 1 and nothing else, or
         "fds", the same with the Disk System's drive)
@@ -30,6 +36,12 @@ PAD_FIELD = "UDLRSsBA"   # the input file's order
 WIRE = "ABsSUDLR"        # the package's order (and the cartridge's bits)
 NEUTRAL = {"x": 32768, "y": 32768, "p": 80, "X": 32768, "Y": 32768, "k": 80}
 FOUR = ("fourScore", "fourPlayerAdapter")
+# the button devices (2026-11-01): their first wire index and how many
+# buttons; the mats' squares are numbered as printed on them
+BUTTON_DEVICES = {"powerPadA": (41, 12), "powerPadB": (41, 12), "familyTrainerA": (53, 12),
+                  "familyTrainerB": (53, 12), "konamiHyperShot": (65, 4), "partyTap": (69, 6)}
+LETTERS = {"powerPadA": "1234567890-=", "powerPadB": "1234567890-=", "familyTrainerA": "1234567890-=",
+           "familyTrainerB": "1234567890-=", "konamiHyperShot": "qwoi", "partyTap": "!@#$%^"}
 
 
 def schedule(device):
@@ -48,8 +60,22 @@ def schedule(device):
             extra = "@%sX=%d Y=%d" % ("t " if (f // 5) % 2 else "", (f * 997) % 65536, (f * 2191) % 65536)
         elif device == "famicomArkanoid":
             extra = "@%sk=%d" % ("f " if (f // 3) % 2 else "", (f * 7) % 161)
+        elif device in BUTTON_DEVICES:
+            first, n = BUTTON_DEVICES[device]
+            held = ["b%d" % (first + i) for i in range(n) if (f // (2 + i)) % 3 == 1]
+            extra = "@" + " ".join(held) if held else ""
         lines.append("|..|" + "|".join(pads) + "|" + (extra + "|" if extra else ""))
     return lines
+
+
+def column(device, index, frames=120, hold=30):
+    first, n = BUTTON_DEVICES[device]
+    pad = "." * 8
+    out = []
+    for f in range(frames):
+        extra = "@b%d|" % (first + index) if f >= frames - hold else ""
+        out.append("|..|" + pad + "|" + extra)
+    return out
 
 
 def parse(line):
@@ -64,7 +90,7 @@ def parse(line):
             pads.append({c for c in f if c != "."})
     held, axes = set(), dict(NEUTRAL)
     for tok in extra.split():
-        if tok in ("T", "F", "t", "f", "<", ">", "e"):
+        if tok in ("T", "F", "t", "f", "<", ">", "e") or tok[0] == "b":
             held.add(tok)
         else:
             k, v = tok.split("=")
@@ -88,7 +114,14 @@ def movie(device, lines):
         if device == "fds":
             # the Disk System's drive: Previous Disk, Next Disk, Eject Disk
             console += "".join(c if c in held else "." for c in "<>e")
+        if device in BUTTON_DEVICES and BUTTON_DEVICES[device][0] >= 53:
+            # the expansion port's: the console's group, after the drive's
+            first, n = BUTTON_DEVICES[device]
+            console += "".join(LETTERS[device][i] if "b%d" % (first + i) in held else "." for i in range(n))
         groups = [console, pad(0)]
+        if device in ("powerPadA", "powerPadB"):
+            first, n = BUTTON_DEVICES[device]
+            groups.append("".join(LETTERS[device][i] if "b%d" % (first + i) in held else "." for i in range(n)))
         if device in FOUR:
             groups += [pad(1), pad(2), pad(3)]
         elif device == "zapper":
@@ -103,8 +136,53 @@ def bits(ram, base, n, bit=0):
     return [(ram[base + i] >> bit) & 1 for i in range(n)]
 
 
+def mat_bits(device, held):
+    """the device's bits (Mesen's key numbers turned as on the mat's side)"""
+    first, n = BUTTON_DEVICES[device]
+    side_b = device in ("powerPadB", "familyTrainerB")
+    k = [0] * 12
+    for i in range(n):
+        if "b%d" % (first + i) in held:
+            k[(i // 4) * 4 + (3 - i % 4) if side_b else i] = 1
+    return k
+
+
+def check_buttons(device, ram, held):
+    """what the raw reads of $4017 (RAM $30-$47) must be"""
+    reads = [ram[0x30 + i] for i in range(24)]
+    if device in ("powerPadA", "powerPadB"):
+        k = mat_bits(device, held)
+        lo = k[1] | k[0] << 1 | k[4] << 2 | k[8] << 3 | k[5] << 4 | k[9] << 5 | k[10] << 6 | k[6] << 7
+        hi = k[3] | k[2] << 1 | k[11] << 2 | k[7] << 3 | 0xF0
+        want = [(((hi >> i) & 1 if i < 8 else 1) << 4 | ((lo >> i) & 1 if i < 8 else 1) << 3) for i in range(24)]
+        got = [r & 0x18 for r in reads]
+    elif device in ("familyTrainerA", "familyTrainerB"):
+        k = mat_bits(device, held)
+        col = [k[i] | k[4 + i] | k[8 + i] for i in range(4)]
+        v = ~(col[0] << 4 | col[1] << 3 | col[2] << 2 | col[3] << 1) & 0x1E
+        want = [v] * 24
+        got = [r & 0x1E for r in reads]
+    elif device == "konamiHyperShot":
+        b = [1 if "b%d" % (65 + i) in held else 0 for i in range(4)]
+        v = b[1] << 1 | b[0] << 2 | b[3] << 3 | b[2] << 4
+        want = [v] * 24
+        got = [r & 0x1E for r in reads]
+    else:
+        st = sum(1 << i for i in range(6) if "b%d" % (69 + i) in held)
+        want = [(st & 7) << 2, ((st >> 3) & 7) << 2] + [0x14] * 22
+        got = [r & 0x1C for r in reads]
+    return got, want
+
+
 def check(device, lines, ram):
     console, pads, held, axes = parse(lines[-1])
+    if device in BUTTON_DEVICES:
+        got, want = check_buttons(device, ram, held)
+        if got != want:
+            print("$4017 read %s, not %s" % (" ".join("%02x" % g for g in got[:8]), " ".join("%02x" % w for w in want[:8])))
+            return False
+        print("$4017 read as the last frame's buttons give: %s" % " ".join("%02x" % g for g in got[:8]))
+        return True
     want = lambda i: [1 if c in pads[i] else 0 for c in WIRE]
     problems = []
     if device == "fourScore":
@@ -162,6 +240,10 @@ def main():
     elif cmd == "movie":
         lines = [l for l in open(sys.argv[3]) if l.strip()]
         open(sys.argv[4], "w").write("\n".join(movie(sys.argv[2], lines)) + "\n")
+    elif cmd == "column":
+        open(sys.argv[4], "w").write("\n".join(column(sys.argv[2], int(sys.argv[3]))) + "\n")
+    elif cmd == "buttons":
+        print(BUTTON_DEVICES[sys.argv[2]][1])
     elif cmd == "check":
         lines = [l for l in open(sys.argv[3]) if l.strip()]
         sys.exit(0 if check(sys.argv[2], lines, open(sys.argv[4], "rb").read()) else 1)

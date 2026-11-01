@@ -446,6 +446,33 @@ device_leg famicomZapper '{"expansion":"famicomZapper"}'
 device_leg famicomArkanoid '{"expansion":"famicomArkanoid"}'
 device_leg fourPlayerAdapter '{"expansion":"fourPlayerAdapter"}'
 
+# (2026-11-01) The Power Pad in port 2 (both sides of the mat), and on the
+# expansion port the Family Trainer mat (both sides), Konami's Hyper Shot
+# and the Party Tap: the same checks, and each button alone gives the reads
+# of $4017 Mesen's device gives for it and no other's (dev:<device>-buttons).
+for bd in 'powerPadA {"port2":"powerPadA"}' 'powerPadB {"port2":"powerPadB"}' \
+	'familyTrainerA {"expansion":"familyTrainerA"}' 'familyTrainerB {"expansion":"familyTrainerB"}' \
+	'konamiHyperShot {"expansion":"konamiHyperShot"}' 'partyTap {"expansion":"partyTap"}'; do
+	d="${bd%% *}"
+	device_leg "$d" "${bd#* }"
+	wd="$(workdir "col.$d" input-test.nes "${bd#* }")"
+	n="$(python3 -I "$dev" buttons "$d")"
+	bad=""
+	for i in $(seq 0 $((n - 1))); do
+		python3 -I "$dev" column "$d" "$i" "$work/$d.col.inputs"
+		"$rn" "$wd" --frames 120 --inputs "$work/$d.col.inputs" --dump-domain RAM "$work/$d.col.ram" > /dev/null 2>&1
+		if ! seen="$(python3 -I "$dev" check "$d" "$work/$d.col.inputs" "$work/$d.col.ram")"; then
+			bad="button $((i + 1)): $seen"
+			break
+		fi
+	done
+	if [ -n "$bad" ]; then
+		report "dev:$d-buttons" FAIL "$bad"
+	else
+		report "dev:$d-buttons" PASS "each of its $n buttons alone gives the reads Mesen's device gives for it"
+	fi
+done
+
 # Where the Zapper points: the cartridge's right half is white and its left
 # half black, so pointed right it sees light, sooner the higher it points,
 # and pointed left it sees none. Native == sandbox at each place. The same
@@ -985,7 +1012,10 @@ PYMOV
 	devfail=""
 	for ds in 'fourScore {"port1":"fourScore"}' 'zapper {"port2":"zapper"}' 'arkanoid {"port2":"arkanoid"}' \
 		'famicomZapper {"expansion":"famicomZapper"}' 'famicomArkanoid {"expansion":"famicomArkanoid"}' \
-		'fourPlayerAdapter {"expansion":"fourPlayerAdapter"}'; do
+		'fourPlayerAdapter {"expansion":"fourPlayerAdapter"}' 'powerPadA {"port2":"powerPadA"}' \
+		'powerPadB {"port2":"powerPadB"}' 'familyTrainerA {"expansion":"familyTrainerA"}' \
+		'familyTrainerB {"expansion":"familyTrainerB"}' 'konamiHyperShot {"expansion":"konamiHyperShot"}' \
+		'partyTap {"expansion":"partyTap"}'; do
 		d="${ds%% *}"
 		python3 -I "$dev" movie "$d" "$work/$d.inputs" "$work/$d.movie.txt"
 		"$runner" --new-project "$work/dv.$d.chimeraProject" "$package" "$root/tests/roms/input-test.nes" "$work/$d.movie.txt" \
@@ -1000,7 +1030,7 @@ PYMOV
 		fi
 	done
 	if [ -z "$devfail" ]; then
-		report "engine:devices" PASS "the six devices' schedules (Four Score, Zapper, Arkanoid; the expansion port's Zapper, Arkanoid, four-player adapter) as Chimera movies end on the native reference's RAM"
+		report "engine:devices" PASS "the twelve devices' schedules (Four Score, Zapper, Arkanoid, Power Pad sides A and B; the expansion port's Zapper, Arkanoid, four-player adapter, Family Trainer sides A and B, Hyper Shot, Party Tap) as Chimera movies end on the native reference's RAM"
 	else
 		report "engine:devices" FAIL "$devfail"
 	fi

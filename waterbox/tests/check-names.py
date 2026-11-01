@@ -46,6 +46,7 @@ NAMES = ["Mesen", "MesenCE", "NES", "iNES", "NES 2.0", "UNIF", "Famicom", "Ninte
          "NEC", "Hudson", "YM2413", "TurboTap", "Super CD-ROM System", "CD-ROM", "Games Express", "System Card",
          # the devices and models added on 2026-11-01
          "Super NES Mouse", "Super Scope", "Light Phaser", "Avenue Pad 6", "SwanCrystal", "Pocket Challenge V2",
+         "Power Pad", "Family Trainer", "Hyper Shot", "Konami", "Party Tap",
          "Chimera", "TAStudio", "GitHub", "Lua", "Windows", "Linux", "macOS", "OpenGL", "Vulkan", "Direct3D", "SQLite",
          "miniBox", "ffmpeg", "Qt", "Wayland"]
 try:

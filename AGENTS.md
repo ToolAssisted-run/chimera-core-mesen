@@ -58,12 +58,12 @@ MB=<chimera>/extern/chimera-common-minibox     # built with -Dguest_cpp=true in 
 git submodule update --init
 meson setup build/meson-native -Dminibox_dir="$MB" && ninja -C build/meson-native -j4
 sh waterbox/setup-guest.sh -m "$MB" && ninja -C build/meson-guest -j4
-./waterbox/run-gate.sh                                   # 180 ok, 0 failed, the engine and game checks skipped
+./waterbox/run-gate.sh                                   # 192 ok, 0 failed, the engine and game checks skipped
 ./waterbox/build-package.sh -m "$MB" -o build/Cores
 <chimera>/build/meson-linux/source/ui/test-packages build/Cores
-CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 212 ok, 0 failed (289 with every owner's file)
-./waterbox/tests/run-frontend.sh --chimera-root <chimera> [--qt-lib <Qt lib folder>]   # 30 ok (41 with the owner's files)
-python3 <chimera>/tools/check-core-texts.py .            # every key named (186)
+CHIMERA_ROOT=<chimera> ./waterbox/run-gate.sh            # 224 ok, 0 failed (301 with every owner's file)
+./waterbox/tests/run-frontend.sh --chimera-root <chimera> [--qt-lib <Qt lib folder>]   # 32 ok (43 with the owner's files)
+python3 <chimera>/tools/check-core-texts.py .            # every key named (192)
 ```
 
 `MESEN_CONTENT_DIR=<folder>` holding the owner's NES games and BIOS files

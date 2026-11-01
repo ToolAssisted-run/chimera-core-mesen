@@ -168,6 +168,35 @@ else
 	report "settings:port1" PASS "port1=none in the project unplugged the pad; RAM == native"
 fi
 
+# --- (2026-11-01) the Power Pad in port 2 and Konami's Hyper Shot on the
+# expansion port, squares and buttons held through the window, on the input
+# test cartridge: RAM == the native run of an input file holding the same,
+# != idle ---
+mat_window() { # check tag settings held-names wire-indices
+	local check="$1" tag="$2" settings="$3" names="$4" idx="$5" in="$work/$2.inputs" p
+	python3 -I - "$in" "$frames" "$idx" <<'PYMAT'
+import sys
+held = " ".join("b" + i for i in sys.argv[3].split(","))
+open(sys.argv[1], "w").write(("|..|........|@%s|\n" % held) * int(sys.argv[2]))
+PYMAT
+	p="$(make_project "$tag" input-test.nes "$settings")"
+	if [ -z "$p" ]; then
+		report "$check" FAIL "no project made (see tests/work/project.$tag/make.log)"
+	elif ! native_ram "$tag" input-test.nes "$settings" "$in" || ! native_ram "$tag.idle" input-test.nes "$settings" ""; then
+		report "$check" FAIL "native runner error (see tests/work/native.$tag.txt)"
+	elif ! run_window "$tag" "$p" "$work/window.json" "$frames" "$names"; then
+		report "$check" FAIL "the window did not report OK (see tests/work/$tag.log)"
+	elif ! cmp -s "$work/native.$tag.ram.bin" "$work/$tag.ram.bin"; then
+		report "$check" FAIL "RAM with $names held differs from the native reference"
+	elif cmp -s "$work/$tag.ram.bin" "$work/native.$tag.idle.ram.bin"; then
+		report "$check" FAIL "holding $names changed nothing"
+	else
+		report "$check" PASS "$names held in the window == the native input file holding them, != idle"
+	fi
+}
+mat_window powerPad:frontend powerpad '{"port2":"powerPadA"}' "P2 Mat 3,P2 Mat 10" 43,50
+mat_window hyperShot:frontend hypershot '{"expansion":"konamiHyperShot"}' "Expansion Hyper Shot 1 Jump,Expansion Hyper Shot 2 Run" 66,67
+
 # --- the Famicom's expansion port: the four-player adapter, with players 3
 # and 4 held through the window, on this repository's input test cartridge
 # (which keeps what it reads from both ports in RAM) ---

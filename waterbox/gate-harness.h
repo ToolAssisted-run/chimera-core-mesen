@@ -10,7 +10,9 @@
  * and P4 x {A, B, Select, Start, Up, Down, Left, Right}, 34 P2 Trigger (the
  * Zapper), 35 P2 Fire (the Arkanoid controller), 36 Expansion Trigger, 37
  * Expansion Fire (the same devices on the Famicom's expansion port), 38
- * Previous Disk, 39 Next Disk, 40 Eject Disk (the Disk System's). Axes:
+ * Previous Disk, 39 Next Disk, 40 Eject Disk (the Disk System's), 41-52
+ * P2 Mat 1-12 (the Power Pad), 53-64 Expansion Mat 1-12 (the Family
+ * Trainer), 65-68 Konami's Hyper Shot, 69-74 the Party Tap. Axes:
  * 0 P2 Zapper X, 1 P2 Zapper Y (0..65535), 2 P2 Paddle (0..160), 3
  * Expansion Zapper X, 4 Expansion Zapper Y, 5 Expansion Paddle.
  *
@@ -22,7 +24,9 @@
  * holds the Zapper's trigger, F the Arkanoid controller's button, x= and y=
  * say where the Zapper points and p= where the knob is; t, f, X=, Y= and k=
  * are the same for the expansion port's Zapper and Arkanoid controller;
- * <, > and e are the Disk System's Previous Disk, Next Disk and Eject Disk. An
+ * <, > and e are the Disk System's Previous Disk, Next Disk and Eject Disk;
+ * bN holds the wire's button N (the Power Pad's and the expansion port's
+ * other devices', 41 to 74). An
  * axis a line does not name rests at its neutral value (32768 for a
  * Zapper's, 80 for a knob).
  *
@@ -49,7 +53,7 @@
 #include <time.h>
 
 /* the NES's wire; another machine's is up to GATE_BTN_MAX */
-#define GATE_BTN_COUNT (2 + 4 * 8 + 2 + 2 + 3)
+#define GATE_BTN_COUNT (2 + 4 * 8 + 2 + 2 + 3 + 12 + 12 + 4 + 6)
 #define GATE_BTN_MAX 96
 #define GATE_AXIS_COUNT 6
 static const int32_t gate_axis_neutral[GATE_AXIS_COUNT] = { 32768, 32768, 80, 32768, 32768, 80 };
@@ -203,6 +207,15 @@ static int gate_parse_extra(const char *s, uint8_t *buttons, int32_t *axes)
 		if (*s == '<') { buttons[38] = 1; s++; continue; }
 		if (*s == '>') { buttons[39] = 1; s++; continue; }
 		if (*s == 'e') { buttons[40] = 1; s++; continue; }
+		if (*s == 'b')
+		{
+			char *end;
+			long n = strtol(s + 1, &end, 10);
+			if (end == s + 1 || n < 0 || n >= GATE_BTN_COUNT) return 0;
+			buttons[n] = 1;
+			s = end;
+			continue;
+		}
 		int axis = *s == 'x' ? 0 : *s == 'y' ? 1 : *s == 'p' ? 2 : *s == 'X' ? 3 : *s == 'Y' ? 4 : *s == 'k' ? 5 : -1;
 		if (axis < 0 || s[1] != '=') return 0;
 		char *end;

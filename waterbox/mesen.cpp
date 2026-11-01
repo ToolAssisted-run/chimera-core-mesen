@@ -140,7 +140,16 @@ static int g_machine = M_NES;
 #define BTN_PREV_DISK (BTN_EXP_FIRE + 1)
 #define BTN_NEXT_DISK (BTN_PREV_DISK + 1)
 #define BTN_EJECT_DISK (BTN_NEXT_DISK + 1)
-#define BTN_COUNT (BTN_EJECT_DISK + 1)
+/* (2026-11-01) 41 P2 Mat 1 to 52 P2 Mat 12 (the Power Pad in port 2, its
+ * twelve squares by the numbers printed on them), 53 Expansion Mat 1 to 64
+ * Expansion Mat 12 (the Family Trainer mat, the same mat made for the
+ * Famicom's expansion port), 65 to 68 Konami's Hyper Shot (player 1's Run
+ * and Jump, player 2's Run and Jump), 69 to 74 the Party Tap's six buttons */
+#define BTN_MAT (BTN_EJECT_DISK + 1)
+#define BTN_EXP_MAT (BTN_MAT + 12)
+#define BTN_HYPER_SHOT (BTN_EXP_MAT + 12)
+#define BTN_PARTY_TAP (BTN_HYPER_SHOT + 4)
+#define BTN_COUNT (BTN_PARTY_TAP + 6)
 /* the largest wire of any machine (the Super NES's: 2 + 5 x 12 + 8) */
 #define BTN_MAX 96
 static uint8_t g_buttons[BTN_MAX];
@@ -156,8 +165,9 @@ static int32_t g_axes[AXIS_COUNT] = { 32768, 32768, 80, 32768, 32768, 80 };
 
 /* what the ports hold (the settings port1, port2 and expansion) */
 enum { PORT1_GAMEPAD, PORT1_NONE, PORT1_FOUR_SCORE };
-enum { PORT2_NONE, PORT2_GAMEPAD, PORT2_ZAPPER, PORT2_ARKANOID };
-enum { EXP_NONE, EXP_ZAPPER, EXP_ARKANOID, EXP_FOUR_PLAYER, EXP_EPSM };
+enum { PORT2_NONE, PORT2_GAMEPAD, PORT2_ZAPPER, PORT2_ARKANOID, PORT2_POWER_PAD_A, PORT2_POWER_PAD_B };
+enum { EXP_NONE, EXP_ZAPPER, EXP_ARKANOID, EXP_FOUR_PLAYER, EXP_EPSM, EXP_TRAINER_A, EXP_TRAINER_B, EXP_HYPER_SHOT,
+	EXP_PARTY_TAP };
 static int g_port1 = PORT1_GAMEPAD, g_port2 = PORT2_NONE, g_exp = EXP_NONE;
 
 /* NES wire column -> NesController::Buttons bit */
@@ -473,6 +483,32 @@ public:
 			device->SetBitValue(0, g_buttons[exp ? BTN_EXP_FIRE : BTN_FIRE] != 0); /* ArkanoidController::Fire */
 			return true;
 		}
+		case ControllerType::PowerPadSideA:
+		case ControllerType::PowerPadSideB:
+		case ControllerType::FamilyTrainerMatSideA:
+		case ControllerType::FamilyTrainerMatSideB: {
+			/* the mat's square n (as printed on it, 1 to 12, three rows of
+			 * four) is Mesen's key n: on side A the device's bit n - 1, on
+			 * side B the same row the other way round (PowerPad's
+			 * InternalSetStateFromInput) */
+			int sideB = t == ControllerType::PowerPadSideB || t == ControllerType::FamilyTrainerMatSideB;
+			int exp = t == ControllerType::FamilyTrainerMatSideA || t == ControllerType::FamilyTrainerMatSideB;
+			const uint8_t *mat = &g_buttons[exp ? BTN_EXP_MAT : BTN_MAT];
+			for (int n = 0; n < 12; n++) {
+				int bit = sideB ? (n / 4) * 4 + (3 - n % 4) : n;
+				device->SetBitValue((uint8_t)bit, mat[n] != 0);
+			}
+			return true;
+		}
+		case ControllerType::KonamiHyperShot:
+			/* its bits: player 1's Run, Jump, player 2's Run, Jump */
+			for (int i = 0; i < 4; i++)
+				device->SetBitValue((uint8_t)i, g_buttons[BTN_HYPER_SHOT + i] != 0);
+			return true;
+		case ControllerType::PartyTap:
+			for (int i = 0; i < 6; i++)
+				device->SetBitValue((uint8_t)i, g_buttons[BTN_PARTY_TAP + i] != 0);
+			return true;
 		/* the other machines: a pad is its port's player */
 		case ControllerType::SnesMouse: {
 			/* the frame's movement (the mouse counts up to 127 each way) and
@@ -642,11 +678,12 @@ static int setting_choice(const char *name, const char *const *options, int coun
 static void read_ports(void)
 {
 	static const char *const opts1[] = { "gamepad", "none", "fourScore" };
-	static const char *const opts2[] = { "none", "gamepad", "zapper", "arkanoid" };
-	static const char *const optsExp[] = { "none", "famicomZapper", "famicomArkanoid", "fourPlayerAdapter", "epsm" };
+	static const char *const opts2[] = { "none", "gamepad", "zapper", "arkanoid", "powerPadA", "powerPadB" };
+	static const char *const optsExp[] = { "none", "famicomZapper", "famicomArkanoid", "fourPlayerAdapter", "epsm",
+		"familyTrainerA", "familyTrainerB", "konamiHyperShot", "partyTap" };
 	g_port1 = setting_choice("port1", opts1, 3, PORT1_GAMEPAD);
-	g_port2 = setting_choice("port2", opts2, 4, PORT2_NONE);
-	g_exp = setting_choice("expansion", optsExp, 5, EXP_NONE);
+	g_port2 = setting_choice("port2", opts2, 6, PORT2_NONE);
+	g_exp = setting_choice("expansion", optsExp, 9, EXP_NONE);
 }
 
 static const char *const kRamStates[] = { "zeros", "ones", "random" };
@@ -669,7 +706,8 @@ static void configure_nes(EmuSettings *s)
 	nes.RamPowerOnState = ram_state(0);
 	read_ports();
 	static const ControllerType port2Types[] = { ControllerType::None, ControllerType::NesController,
-		ControllerType::NesZapper, ControllerType::NesArkanoidController };
+		ControllerType::NesZapper, ControllerType::NesArkanoidController, ControllerType::PowerPadSideA,
+		ControllerType::PowerPadSideB };
 	if (g_port1 == PORT1_FOUR_SCORE) {
 		/* the Four Score takes both ports and holds four pads */
 		nes.Port1.Type = ControllerType::FourScore;
@@ -683,7 +721,9 @@ static void configure_nes(EmuSettings *s)
 	/* the Famicom's expansion port, beside the two controller ports (Mesen
 	 * plugs it in whatever console it emulates) */
 	static const ControllerType expTypes[] = { ControllerType::None, ControllerType::FamicomZapper,
-		ControllerType::FamicomArkanoidController, ControllerType::FourPlayerAdapter, ControllerType::None };
+		ControllerType::FamicomArkanoidController, ControllerType::FourPlayerAdapter, ControllerType::None,
+		ControllerType::FamilyTrainerMatSideA, ControllerType::FamilyTrainerMatSideB, ControllerType::KonamiHyperShot,
+		ControllerType::PartyTap };
 	nes.ExpPort.Type = expTypes[g_exp];
 	/* the EPSM in the expansion port: Mesen builds it with the cartridge, as
 	 * for a header that asks for it (patch 0008). A header that asks for it
@@ -1674,6 +1714,14 @@ ECL_EXPORT int IsButtonActive(int32_t index)
 		return g_fds > 1;
 	if (index == BTN_EJECT_DISK)
 		return g_fds > 0;
+	if (index >= BTN_MAT && index < BTN_EXP_MAT)
+		return !fourScore && (g_port2 == PORT2_POWER_PAD_A || g_port2 == PORT2_POWER_PAD_B);
+	if (index >= BTN_EXP_MAT && index < BTN_HYPER_SHOT)
+		return g_exp == EXP_TRAINER_A || g_exp == EXP_TRAINER_B;
+	if (index >= BTN_HYPER_SHOT && index < BTN_PARTY_TAP)
+		return g_exp == EXP_HYPER_SHOT;
+	if (index >= BTN_PARTY_TAP && index < BTN_COUNT)
+		return g_exp == EXP_PARTY_TAP;
 	return 0;
 }
 

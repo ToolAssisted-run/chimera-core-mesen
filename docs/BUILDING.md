@@ -124,7 +124,7 @@ differ.
 
 It needs `run-native`, `run-wbx` and `core.wbx` built, and builds nothing
 (it builds the Super NES chip test cartridges it needs into its work
-folder). It ends with `<n> ok, <m> failed`; without Chimera it is 180
+folder). It ends with `<n> ok, <m> failed`; without Chimera it is 192
 checks, and SKIP lines for the checks that need Chimera or the owner's
 files. The other machines' checks are in `waterbox/tests/systems.sh`, which
 it sources. With
@@ -134,8 +134,8 @@ CHIMERA_ROOT=<chimera> MESEN_PACKAGE=<the package> ./waterbox/run-gate.sh
 ```
 
 more run: Chimera's own checks of the texts, and the ones through
-`<chimera>/build/dll/chimera-run`: 212 checks. With all of the owner's
-files (below) and `MESEN_PUBLISHED_PACKAGE`, 289.
+`<chimera>/build/dll/chimera-run`: 224 checks. With all of the owner's
+files (below) and `MESEN_PUBLISHED_PACKAGE`, 301.
 
 `MESEN_PUBLISHED_PACKAGE=<mesen.chimeraCore as published>` (the NES-only
 package, before the other machines) adds `nes:published` (its core.wbx and
@@ -226,12 +226,12 @@ python3 <chimera>/tools/check-core-texts.py .
 
 It runs Chimera's window headless (no display) on projects it makes with
 `chimera-run --new-project`, and compares the console's RAM with the native
-reference's: 30 checks (the NES's 5, each other machine's test program
+reference's: 32 checks (the NES's 5, each other machine's test program
 in the window and its default keys, and the Super NES Mouse, Super Scope,
-Light Phaser and Avenue Pad 6 with their buttons held and axes set through
+Light Phaser, Avenue Pad 6, Power Pad and Hyper Shot with their buttons held and axes set through
 the window), more with `MESEN_CONTENT_DIR` (the
 real rhythm ROM, Sonic, the Disk System) and `MESEN_SYSTEMS_CONTENT` (a
-game of each machine whose BIOS or games are the owner's): 41 in all; and
+game of each machine whose BIOS or games are the owner's): 43 in all; and
 one with `MESEN_FAMISTUDIO_ROMS`. Its files stay in `waterbox/tests/work/` (ignored by
 git). `--qt-lib` is for a window built against a Qt the system does not
 know of, such as `~/qt/6.12.0/gcc_64/lib` after `tools/ci-chimera.sh`.
