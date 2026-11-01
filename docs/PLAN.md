@@ -2130,3 +2130,198 @@ Advance's clock said 2000-01-01 12:00:10 AM, not 2026-11-01 1:45:40 PM; the
 Game Boy's 00:00:10, not 13:45:40; the WonderSwan's 2000-01-01; the
 SPC7110's nothing at all (00-00-00 00:00:00) where the default date was
 wanted.
+
+## 2026-11-01: the NES's remaining devices, its keyboards and its console types
+
+### What MesenCE has that the package did not offer
+
+From `Core/Shared/SettingTypes.h` (`ControllerType`), the NES's control
+manager (`Core/NES/NesControlManager.cpp`) and Mesen's UI's lists of what
+each port may hold (`UI/ViewModels/NesInputConfigViewModel.cs`), at the pin:
+
+- either controller port: a Super NES controller, the Super NES Mouse and
+  the NTT Data Keypad (all read by some new NES games), the Subor mouse,
+  the Virtual Boy controller; port 2 also the Famicom's second controller,
+  which has a microphone;
+- the expansion port: the two-player adapter, the Oeka Kids tablet, the
+  Family BASIC keyboard (with its data recorder), the Pachinko controller,
+  the Famicom Network System controller (FCNS), the Exciting Boxing bag,
+  the Jissen Mahjong controller, the Subor keyboard, the Barcode Battler,
+  the Hori Track, Bandai's Hyper Shot, ASCII's Turbo File and the Battle Box;
+- on the cartridge: Karaoke Studio's microphone (mapper 188) and the Datach
+  barcode reader (mapper 157);
+- the console type (`NesConsoleType`): NES-001, NES-101, HVC-001, HVC-101;
+- found on the way, not a controller: the VS System's coin slots, service
+  buttons and DIP switches (Mesen's `VsInputButtons` and the VS games' DIP
+  switches): not offered; a VS game cannot be started without a coin (see
+  the questions).
+
+### What is offered now
+
+Everything above except the devices that hold data outside the machine or
+read barcodes (the Family BASIC data recorder, the Turbo File, the Battle
+Box, the Barcode Battler, the Datach reader): those need a file, or a
+barcode typed in, that Chimera has no way to give a core beyond what a
+package can declare; they are put to the owner.
+
+| Setting | New choices |
+| --- | --- |
+| Controller Port 1 (`port1`) | `snesPad`, `snesMouse`, `nttKeypad`, `suborMouse`, `virtualBoy` |
+| Controller Port 2 (`port2`) | `famicomPad` (the Famicom's second controller, with its microphone), and the same five |
+| Expansion Port (`expansion`) | `twoPlayerAdapter`, `oekaKids`, `familyBasicKeyboard`, `pachinko`, `fcns`, `excitingBoxing`, `jissenMahjong`, `suborKeyboard`, `horiTrack`, `bandaiHyperShot` |
+| Console Model (`nesModel`, new) | `nes001` (the default, as before), `nes101`, `hvc001`, `hvc101` |
+
+Karaoke Studio's microphone is no setting: it is part of its cartridge;
+its three buttons are the machine's when the cartridge has mapper 188.
+
+The wire grows from 75 to 332 buttons, every new one after the ones
+before, so a movie made before keeps its columns; the axes from 6 to 14.
+`IsButtonActive` and `IsAxisActive` give a project only the controls its
+ports hold:
+
+- P1 and P2 X, Y, L and R (a Super NES controller's buttons the NES pad
+  has not, the keypad's, the Virtual Boy controller's L and R); the pad's
+  eight columns are shared: A, B, Select, Start and the directions;
+- P1 and P2 Pad 2 Up, Down, Left, Right (the Virtual Boy controller's
+  second pad);
+- P1 and P2 Mouse Left and Right, and axes P1 and P2 Mouse X and Y (the
+  frame's movement, -127 to 127; the Super NES Mouse's and the Subor
+  mouse's, which Mesen clamps to 31);
+- P2 Microphone;
+- P1 and P2 Keypad 0 to 9, *, #, ., C and End (the NTT Data Keypad's;
+  the FCNS controller on the expansion port uses P1's);
+- the expansion port's: Pachinko Press and Release (Mesen turns the
+  knob a step at each strobe while one is held), the Exciting Boxing bag's
+  eight sensors, the Jissen Mahjong controller's 21 buttons, the Oeka Kids
+  pen (and axes Expansion Pen X and Y, where it is), axes Expansion Track X
+  and Y (the Hori Track's ball); Bandai's Hyper Shot uses the Famicom
+  Zapper's Expansion Trigger and Expansion Zapper X and Y; the devices
+  that are a pad with more (Pachinko, FCNS, Hori Track, Hyper Shot) and the
+  two-player adapter use players 1 and 2's pad columns, as the
+  four-player adapter does;
+- Microphone A, B and Voice (Karaoke Studio's);
+- the keyboards: 72 keys "Key A" ... "Key Kana" (Family BASIC) and 99
+  "Subor Key A" ... (Subor), in Mesen's order of each keyboard's keys,
+  which is the device's bit number.
+
+As Mesen gives them from keys, the Famicom microphone is heard on every
+third frame while held and Karaoke Studio's voice on every second (a
+voice is not a steady sound; Mesen's `NesController` and
+`BandaiMicrophone`).
+
+The piano roll: a project with the Family BASIC keyboard and a pad in port
+1 has 82 controls; with the Subor keyboard 109 (the most of any NES
+project). The movie columns of both were written and replayed by
+chimera-run, and the window ran both projects with keys held and TAStudio
+recording (below). The window ran headless: how the piano roll looks with
+109 columns was not looked at. Each key has a short header (`kA`, `kRet`
+for the Family BASIC keyboard, `sA`, `sPgDn` for the Subor's), since
+the two keyboards share their keys' letters.
+
+Default keys: the keyboards' keys on the PC keyboard's keys as Chimera
+names them, after Mesen's own default mapping (Return on Enter, Stop on
+Delete, GRPH on Alt, Kana on End, the Yen key on Backslash, both Shift keys
+on Shift); the keypads on the PC's keypad; the mice and the pen on the
+mouse; the Virtual Boy's second pad on I, J, K, L; Pachinko on R and F; the
+Exciting Boxing bag on the keypad and the Jissen Mahjong controller on
+letters and numbers, as Mesen has them.
+
+### Patch 0014
+
+`MESEN_MAPPER_INPUT_READS`: Karaoke Studio reads its microphone's buttons
+at $6000 through the mapper, which neither Mesen's lag counter nor the
+input-read hook (patch 0003) saw: a frame that read only the microphone
+was a lag frame. The mapper's read now sets the control manager's
+input-read flag.
+
+### The test cartridges
+
+`tests/input-test/make-nes-devices.py` writes eight small cartridges of
+this repository's own (`tests/roms/nes-*.nes`): one program that, each
+frame, runs a list of writes to $4016 and reads of $4016, $4017 or $6000
+made for one way of talking to a device, and keeps every byte it reads.
+`nes-serial.nes` (strobe, then 32 reads of each port, three times: every
+device that shifts its state out), `nes-oeka.nes`, `nes-boxing.nes`,
+`nes-mahjong.nes`, `nes-fbkey.nes` (the ten rows of the Family BASIC
+keyboard), `nes-suborkey.nes` (the thirteen of the Subor's), `nes-mic.nes`
+(mapper 188) and `nes-dmc.nes` (the console types: below).
+`waterbox/tests/nes-devices.py` works out what each device must answer
+from Mesen's code (the Super NES controller's 16 bits, the keypad's 32,
+the Subor mouse's one- or three-byte packets, the Pachinko knob's turns,
+the keyboards' matrices...), playing the whole schedule through the
+device's state where it keeps one.
+
+### Checks
+
+In `waterbox/tests/nes-devices.sh`, sourced by `run-gate.sh` (CI runs
+them; they need no owner's file):
+
+- `dev:<device>` for the 22 devices (`suborMouse1`, `suborMouse2`,
+  `snesMouseNes1`, `snesMouseNes2`, `virtualBoy1`, `virtualBoy2`,
+  `snesPadNes1`, `snesPadNes2`, `nttKeypad1`, `nttKeypad2`, `famicomMic`,
+  `twoPlayerAdapter`, `pachinko`, `fcns`, `horiTrack`, `bandaiHyperShot`,
+  `oekaKids`, `excitingBoxing`, `jissenMahjong`, `familyBasic`,
+  `suborKeyboard`, `bandaiMic`): a 240-frame schedule moving every
+  control, native == sandbox == saved and loaded each frame; the cartridge
+  read exactly what the device answers on the last frame; and with the
+  project's default ports (for Karaoke Studio's microphone, which is the
+  cartridge's: with no input) it reads otherwise;
+- `dev:<device>-buttons`: each of the device's buttons alone gives what the
+  device answers for it (the keyboards: each of their 72 and 99 keys);
+- `dev:<device>-session`: a state saved at frame 120 by one process and
+  loaded by another ends on the straight run's machine;
+- `dev:bandaiHyperShot-light`: Bandai's Hyper Shot sees light on the white
+  half of the picture, sooner the higher it points, and none on the black
+  half;
+- `nes:model`: the four console types, on `nes-dmc.nes`: the bits 2 to 4
+  that reads of $4016 just after a sample fetch had are the bus's as each
+  console passes them (00 on the NES-001, 04 on the NES-101, 18 on both
+  Famicoms); native == sandbox == saved and loaded each frame. The
+  HVC-001's other difference in Mesen, a controller handed a read the CPU
+  repeats on the next cycle, did not occur with this program: the HVC-001
+  and the HVC-101 read alike here, so the check does not tell them apart;
+- `engine:nes-devices`: each device's schedule as a Chimera movie with only
+  the controls its project has (made into a project by one chimera-run,
+  replayed by another) ends on the native reference's RAM, and the
+  device's reads reach the input-poll callback on every frame the
+  cartridge reads it.
+
+In the window (`run-frontend.sh`): `familyBasic:frontend`,
+`suborKeyboard:frontend`, `virtualBoy:frontend`, `nttKeypad:frontend`,
+`suborMouse:frontend`, `oekaKids:frontend`, `horiTrack:frontend`,
+`jissenMahjong:frontend`, `famicomMic:frontend`: the device's buttons held
+and its axes set through the window's Lua with TAStudio recording; the RAM
+is the native reference's, not the idle run's, and shows what the device
+answers. The keyboards' 82- and 109-control projects ran in the window
+this way. The package's default keys are checked in the window as before
+(`keybinds`: 277 bindings of the NES controller, 14 analog).
+
+None of the owner's files uses any of these devices; no game was tried.
+
+### Measured
+
+Against Chimera main cb46d2b7, with the owner's files and the published
+NES package (Nightly 2026-10-31, a874aa55): `run-gate.sh` 377 ok, 0
+failed (308 before: 69 new), only FamiStudio's checks skipped;
+`nes:published` and `engine:nes-published` pass, so the NES's published
+machine is unchanged. `run-frontend.sh` 52 ok (43 before). `test-packages`
+PASS (0 failed); `check-core-texts.py` 213 keys; `check-names.py` 0 in 26
+tables (three Scandinavian labels first bent "Subor-mus" and were written
+"Mus fra Subor"); `check-proper-nouns.py` 0.
+
+### Seen to fail
+
+A copy of the repository built broken on purpose in eight places, without
+patch 0014's option: the Virtual Boy controller's second pad's Up and Down
+swapped, the Family BASIC keyboard's keys one off, the mice's X and Y
+swapped, the Oeka Kids tablet's "touching below line 48" left out, the
+console type ignored, the two-player adapter's players swapped, the Subor
+keyboard's keys said inactive. Failed: `dev:virtualBoy1` and `2` with
+their `-buttons`, `dev:snesMouseNes1` and `2`, `dev:twoPlayerAdapter` and
+its `-buttons`, `dev:oekaKids`, `dev:familyBasic` and its `-buttons`,
+`nes:model` (00 for all four), and `engine:nes-devices` (the Subor
+keyboard's movie ended elsewhere; the microphone's reads reached the poll
+callback 0 times). `dev:suborMouse1` and `2` passed at first with the
+mice's X and Y swapped: the schedule's last frame moved past the Subor
+mouse's limit of 31 both ways and in the same direction; the last frame
+now moves -5 and 6, and both failed then.

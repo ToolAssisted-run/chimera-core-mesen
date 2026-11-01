@@ -33,7 +33,8 @@ endif
 # the cartridges' clocks on the machine's own time (0009), a file with no
 # folder kept as named (0010), at most 8 pieces of a disc image kept (0011),
 # the WonderSwan's row buffers zeroed (0012), a cartridge's clock started at
-# the host's time of day (0013).
+# the host's time of day (0013), a read of a cartridge's own input device a
+# read of the controls (0014).
 defs = [
   '-DNDEBUG',
   '-DMESEN_SINGLE_THREAD',
@@ -49,6 +50,7 @@ defs = [
   '-DMESEN_CHUNK_LIMIT=8',
   '-DMESEN_ZERO_WS_ROWS',
   '-DMESEN_CLOCK_START',
+  '-DMESEN_MAPPER_INPUT_READS',
 ]
 add_project_arguments(defs + ['-fno-strict-aliasing', '-Wno-narrowing'], language: ['c', 'cpp'])
 

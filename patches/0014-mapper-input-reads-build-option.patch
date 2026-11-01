@@ -1,0 +1,26 @@
+Build option MESEN_MAPPER_INPUT_READS: a read of a cartridge's own input
+device is a read of the controls.
+
+Karaoke Studio's cartridge (mapper 188) has a microphone with two buttons,
+which the game reads at $6000-$7FFF through the mapper, not through the
+controller ports. Mesen's lag counter and the host's input-read hook (patch
+0003) saw only the controller ports, so a frame that read only the
+microphone counted as a lag frame. With this option the mapper's read sets
+the control manager's input-read flag, as a read of $4016 does. Off,
+nothing changes.
+
+--- a/Core/NES/Mappers/Bandai/BandaiKaraoke.h
++++ b/Core/NES/Mappers/Bandai/BandaiKaraoke.h
+@@ -32,6 +32,12 @@
+ 
+ 	uint8_t ReadRegister(uint16_t addr) override
+ 	{
++#ifdef MESEN_MAPPER_INPUT_READS
++		//The microphone's buttons are read here, not through $4016/$4017:
++		//this read too is a read of the controls (no lag frame, and the
++		//host's hook is called)
++		_console->GetControlManager()->SetInputReadFlag();
++#endif
+ 		return _microphone->ReadRam(addr) | _console->GetMemoryManager()->GetOpenBus(0xF8);
+ 	}
+ 

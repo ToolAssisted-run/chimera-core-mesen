@@ -860,6 +860,16 @@ done
 . "$here/tests/systems.sh"
 systems_core
 
+# ---------------------------------------------------------------- the NES's remaining devices
+# The devices of 2026-11-01 (the Subor mouse, the Virtual Boy controller,
+# a Super NES controller, mouse or NTT Data Keypad in an NES port, the
+# Famicom's microphone, the expansion port's two-player adapter, Pachinko,
+# FCNS, Hori Track, Bandai Hyper Shot, Oeka Kids, Exciting Boxing, Jissen
+# Mahjong and the two keyboards, Karaoke Studio's microphone) and the console
+# types: waterbox/tests/nes-devices.sh.
+. "$here/tests/nes-devices.sh"
+nesdev_core
+
 # ---------------------------------------------------------------- the build
 # No network code in the guest (patches/0006, user-decided 2026-10-31).
 if nn="$("$here/tests/check-no-network.sh" "$gst/core.wbx" 2>&1)"; then
@@ -1129,6 +1139,7 @@ PYFS
 		report "engine:famistudio" SKIP "needs MESEN_FAMISTUDIO_ROMS (FamiStudio's exported songs, not in this repository)"
 	fi
 	systems_engine
+	nesdev_engine "$runner" "$package"
 else
 	report "engine:*" SKIP "10 checks: need CHIMERA_ROOT (with build/dll/chimera-run) and the package (MESEN_PACKAGE, default build/Cores/mesen.chimeraCore)"
 fi

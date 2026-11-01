@@ -560,6 +560,53 @@ device_window_leg superScope:frontend superScope "P2 Super Scope Cursor" "P2 Sup
 device_window_leg lightPhaser:frontend lightPhaser2 "P2 Trigger" "P2 Light Phaser X:30000,P2 Light Phaser Y:20000"
 device_window_leg avenuePad6:frontend avenuePad6 "P1 III,P1 VI" ""
 
+# --- the NES's devices of 2026-11-01 (nes-devices.py): a project whose port
+# holds the device, on its device test cartridge, the device's buttons held
+# and its axes set through the window (with TAStudio recording), ends on the
+# native reference's RAM, which shows what the device answers. The two
+# keyboards are the longest inputs: with a pad in port 1, a project has 82
+# controls (Family BASIC) or 109 (Subor) in the piano roll ---
+nes_device_window_leg() { # check device held-buttons axes(name:value,...)
+	local check="$1" dev="$2" holdnames="$3" axes="$4" nd="$here/nes-devices.py" rom settings dir p wd seen
+	read -r rom settings <<< "$(python3 -I "$nd" info "$dev")"
+	dir="$work/project.$dev"
+	rm -rf "$dir" && mkdir -p "$dir" && cp "$root/tests/roms/$rom" "$dir/"
+	"$crun" --new-project "$dir/$dev.chimeraProject" "$package" "$dir/$rom" --settings "$settings" > "$dir/make.log" 2>&1
+	p="$dir/$dev.chimeraProject"
+	[ -f "$p" ] || { report "$check" FAIL "no project made (see tests/work/project.$dev/make.log)"; return; }
+	wd="$work/native.$dev"
+	rm -rf "$wd" && mkdir -p "$wd" && cp "$root/tests/roms/$rom" "$wd/"
+	printf '{"rom":["%s"]}' "$rom" > "$wd/slots"
+	python3 -I -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["settings"]))' "$p" > "$wd/settings"
+	python3 -I "$nd" hold "$dev" "$frames" "$work/$dev.inputs" "$holdnames" "$axes"
+	"$rn" "$wd" --frames "$frames" --inputs "$work/$dev.inputs" --dump-domain RAM "$work/native.$dev.ram.bin" > "$work/native.$dev.txt" 2>&1
+	"$rn" "$wd" --frames "$frames" --dump-domain RAM "$work/native.$dev.idle.ram.bin" > /dev/null 2>&1
+	printf 'frames=%s\nout=%s\nmeta=%s\nshot=\nhold=%s\naxes=%s\n' "$frames" "$work/$dev.ram.bin" "$work/$dev.meta.txt" \
+		"$holdnames" "$axes" > "$work/job.$dev.txt"
+	( cd "$work" && MINIHAWK_JOB="$work/job.$dev.txt" timeout -s KILL 900 "$chimera_exe" --headless \
+		"--config=$work/window.json" "--core=$package" "--lua=$here/frontend-ram.lua" "--project=$p" ) > "$work/$dev.log" 2>&1
+	if ! { [ -f "$work/$dev.meta.txt" ] && grep -q "^status=OK" "$work/$dev.meta.txt"; }; then
+		report "$check" FAIL "the window did not report OK: $(grep -m1 detail= "$work/$dev.meta.txt" 2>/dev/null) (see tests/work/$dev.log)"
+	elif ! cmp -s "$work/native.$dev.ram.bin" "$work/$dev.ram.bin"; then
+		report "$check" FAIL "RAM differs from the native reference"
+	elif cmp -s "$work/$dev.ram.bin" "$work/native.$dev.idle.ram.bin"; then
+		report "$check" FAIL "holding $holdnames changed nothing"
+	elif ! seen="$(python3 -I "$nd" check "$dev" "$work/$dev.inputs" "$work/$dev.ram.bin" 2>&1)"; then
+		report "$check" FAIL "the cartridge read: $seen"
+	else
+		report "$check" PASS "$frames frames in the window with $holdnames held${axes:+ and $axes}: RAM == native, != idle; $seen"
+	fi
+}
+nes_device_window_leg familyBasic:frontend familyBasic "Key A,Key Return,Key F8,Key Kana" ""
+nes_device_window_leg suborKeyboard:frontend suborKeyboard "Subor Key Z,Subor Key Keypad 5,Subor Key Page Down" ""
+nes_device_window_leg virtualBoy:frontend virtualBoy1 "P1 Pad 2 Up,P1 L,P1 A" ""
+nes_device_window_leg nttKeypad:frontend nttKeypad2 "P2 Keypad 7,P2 X,P2 Keypad End" ""
+nes_device_window_leg suborMouse:frontend suborMouse1 "P1 Mouse Right" "P1 Mouse X:-20,P1 Mouse Y:15"
+nes_device_window_leg oekaKids:frontend oekaKids "Expansion Pen" "Expansion Pen X:40000,Expansion Pen Y:30000"
+nes_device_window_leg horiTrack:frontend horiTrack "P1 B" "Expansion Track X:5,Expansion Track Y:-3"
+nes_device_window_leg jissenMahjong:frontend jissenMahjong "Expansion Mahjong C,Expansion Mahjong Ron" ""
+nes_device_window_leg famicomMic:frontend famicomMic "P2 Microphone,P2 Start" ""
+
 # --- the bindings the package ships are the machine's when nobody changed them ---
 p="$(make_project keys nova.nes '{}')"
 job="$work/job.keys.txt"

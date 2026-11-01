@@ -34,7 +34,16 @@ the game's own time, never the computer's.
 Mesen's other controllers are offered too: the **Super NES Mouse** and the
 **Super Scope**, the Master System's **Light Phaser** and the PC Engine's
 six-button **Avenue Pad 6**, each a choice of a port setting; the mice and
-light guns follow your mouse. A **Game Boy Advance** game can
+light guns follow your mouse. Every other device Mesen emulates for the NES is offered too: a Super NES
+controller, Super NES Mouse or NTT Data Keypad in an NES port, the Subor
+mouse, the Virtual Boy controller, the Famicom's second controller (with
+its microphone), and on the expansion port the two-player adapter, the
+Oeka Kids tablet, the **Family BASIC keyboard** (72 keys) and the **Subor
+keyboard** (99 keys), the Pachinko and Famicom Network System
+controllers, the Exciting Boxing bag, the Jissen Mahjong controller, the
+Hori Track and Bandai's Hyper Shot; Karaoke Studio's microphone; and the
+console model (NES, NES top-loader, Famicom, AV Famicom). The keyboards'
+keys are on the PC keyboard's keys. A **Game Boy Advance** game can
 skip the console's boot screen (**Skip Boot Screen**, off by default as in
 Mesen); a game still needs the BIOS, which only programs made to call none
 of it can do without (**BIOS: None**).

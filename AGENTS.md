@@ -25,7 +25,7 @@ of the work.
   plugged in by a setting, the cartridges' clocks on the machine's time, a
   file with no folder kept as named, a disc image's pieces kept to eight,
   the WonderSwan's row buffers zeroed, a cartridge's clock started at Clock
-  Start). `patches/series-marker` names the
+  Start, a cartridge's own input device read as the controls). `patches/series-marker` names the
   string the last patch adds.
 - `meson.build` - one build, two flavors: native (`run-native`, `run-wbx`)
   and guest (`core.wbx`, through the cross file `waterbox/setup-guest.sh`
@@ -41,12 +41,16 @@ of the work.
   are `waterbox/tests/systems.sh` (sourced by it) with
   `waterbox/tests/systems.py` (their schedules, movies and RAM checks).
   `waterbox/tests/machine-devices.py` - the other machines' devices beyond
-  the pad: their schedules, movies and RAM checks.
+  the pad: their schedules, movies and RAM checks. `waterbox/tests/nes-devices.sh`
+  with `nes-devices.py` - the NES's devices added on 2026-11-01 (the
+  keyboards among them) and its console types; `waterbox/tests/clocks.py`
+  - what the cartridges' clocks must say.
   `waterbox/tests/` - the frontend test (`run-frontend.sh`) and its helpers.
 - `waterbox/waterbox.config`, `file_slots.json`, `default_keybinds.json`,
   `package-licenses.json`, `languages/` - the package's declarations.
 - `tests/roms/` - free homebrew, the EPSM test program, the input test
-  program and the other machines' test programs (the Game Boy Advance's runs
+  program, the NES device programs (`nes-*.nes`, from
+  `tests/input-test/make-nes-devices.py`) and the other machines' test programs (the Game Boy Advance's runs
   without a BIOS); `tests/epsm-test/`, `tests/input-test/` and
   `tests/<system>-test/` build them; `tests/inputs/`
   - input schedules written here.

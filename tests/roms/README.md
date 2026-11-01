@@ -70,3 +70,10 @@ The input schedules in `tests/inputs/` were written for this repository.
 - `ws-rtc.ws` - the WonderSwan test program on a Bandai 2003 cartridge with
   a clock, built from `tests/ws-test/ws-test.asm` (with `RTC` defined): it
   also reads the clock's date and time every frame.
+- `nes-serial.nes`, `nes-oeka.nes`, `nes-boxing.nes`, `nes-mahjong.nes`,
+  `nes-fbkey.nes`, `nes-suborkey.nes`, `nes-mic.nes`, `nes-dmc.nes` - this
+  repository's own NES device programs, built by
+  `tests/input-test/make-nes-devices.py`: each frame each talks to the
+  controller ports the way one kind of device needs and keeps every byte
+  it reads (`nes-mic.nes` is a mapper 188 cartridge, `nes-dmc.nes` plays
+  a sample while it reads, for the console types).

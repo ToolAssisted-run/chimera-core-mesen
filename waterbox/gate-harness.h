@@ -12,9 +12,16 @@
  * Expansion Fire (the same devices on the Famicom's expansion port), 38
  * Previous Disk, 39 Next Disk, 40 Eject Disk (the Disk System's), 41-52
  * P2 Mat 1-12 (the Power Pad), 53-64 Expansion Mat 1-12 (the Family
- * Trainer), 65-68 Konami's Hyper Shot, 69-74 the Party Tap. Axes:
- * 0 P2 Zapper X, 1 P2 Zapper Y (0..65535), 2 P2 Paddle (0..160), 3
- * Expansion Zapper X, 4 Expansion Zapper Y, 5 Expansion Paddle.
+ * Trainer), 65-68 Konami's Hyper Shot, 69-74 the Party Tap, then the
+ * devices of 2026-11-01 (75-331: waterbox/mesen.cpp's BTN_P1_XYLR and on:
+ * a Super NES controller's, NTT Data Keypad's and Virtual Boy controller's
+ * buttons in either port, the mice's, the Famicom microphone, the expansion
+ * port's Pachinko controller, Exciting Boxing bag, Jissen Mahjong
+ * controller and Oeka Kids pen, the Bandai microphone, and the Family BASIC
+ * and Subor keyboards' keys). Axes: 0 P2 Zapper X, 1 P2 Zapper Y
+ * (0..65535), 2 P2 Paddle (0..160), 3 Expansion Zapper X, 4 Expansion
+ * Zapper Y, 5 Expansion Paddle, 6-9 P1 and P2 Mouse X and Y, 10-11
+ * Expansion Pen X and Y, 12-13 Expansion Track X and Y.
  *
  * Input files are this repository's own: one line per frame,
  *     |Pr|UDLRSsBA|UDLRSsBA|UDLRSsBA|UDLRSsBA|@T F x=N y=N p=N t f X=N Y=N k=N < > e|
@@ -26,9 +33,9 @@
  * are the same for the expansion port's Zapper and Arkanoid controller;
  * <, > and e are the Disk System's Previous Disk, Next Disk and Eject Disk;
  * bN holds the wire's button N (the Power Pad's and the expansion port's
- * other devices', 41 to 74). An
+ * other devices', 41 and on); aN=V sets axis N. An
  * axis a line does not name rests at its neutral value (32768 for a
- * Zapper's, 80 for a knob).
+ * Zapper's and a pen's, 80 for a knob, 0 for a mouse's movement).
  *
  * The package's other machines (the Super NES, the Game Boy and the rest)
  * have wires of their own: the console's buttons, then each player's pad.
@@ -53,12 +60,12 @@
 #include <time.h>
 
 /* the NES's wire; another machine's is up to GATE_BTN_MAX */
-#define GATE_BTN_COUNT (2 + 4 * 8 + 2 + 2 + 3 + 12 + 12 + 4 + 6)
-#define GATE_BTN_MAX 96
-#define GATE_AXIS_COUNT 6
-static const int32_t gate_axis_neutral[GATE_AXIS_COUNT] = { 32768, 32768, 80, 32768, 32768, 80 };
+#define GATE_BTN_COUNT (2 + 4 * 8 + 2 + 2 + 3 + 12 + 12 + 4 + 6 + 8 + 8 + 4 + 1 + 30 + 2 + 8 + 21 + 1 + 3 + 72 + 99)
+#define GATE_BTN_MAX GATE_BTN_COUNT
+#define GATE_AXIS_COUNT 14
+static const int32_t gate_axis_neutral[GATE_AXIS_COUNT] = { 32768, 32768, 80, 32768, 32768, 80, 0, 0, 0, 0, 32768, 32768, 0, 0 };
 /* the neutral values in use: the NES's, or the machine's (--neutral) */
-static int32_t gate_neutral[GATE_AXIS_COUNT] = { 32768, 32768, 80, 32768, 32768, 80 };
+static int32_t gate_neutral[GATE_AXIS_COUNT] = { 32768, 32768, 80, 32768, 32768, 80, 0, 0, 0, 0, 32768, 32768, 0, 0 };
 
 struct gate_core
 {
@@ -160,7 +167,7 @@ static int gate_inputs_load(const char *path, struct gate_inputs *in)
 	in->lines = NULL;
 	in->count = 0;
 	long cap = 0;
-	char line[256];
+	char line[4096];
 	while (fgets(line, sizeof line, f))
 	{
 		size_t n = strlen(line);
@@ -213,6 +220,19 @@ static int gate_parse_extra(const char *s, uint8_t *buttons, int32_t *axes)
 			long n = strtol(s + 1, &end, 10);
 			if (end == s + 1 || n < 0 || n >= GATE_BTN_COUNT) return 0;
 			buttons[n] = 1;
+			s = end;
+			continue;
+		}
+		if (*s == 'a')
+		{
+			/* aN=V: any axis by its number */
+			char *end;
+			long n = strtol(s + 1, &end, 10);
+			if (end == s + 1 || n < 0 || n >= GATE_AXIS_COUNT || *end != '=') return 0;
+			const char *v = end + 1;
+			long value = strtol(v, &end, 10);
+			if (end == v) return 0;
+			axes[n] = (int32_t)value;
 			s = end;
 			continue;
 		}

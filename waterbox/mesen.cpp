@@ -77,6 +77,7 @@
 #include "SMS/Input/ColecoVisionController.h"
 #include "SMS/Input/SmsLightPhaser.h"
 #include "SNES/Input/SnesMouse.h"
+#include "SNES/Input/SnesNttDataKeypad.h"
 #include "SNES/Input/SuperScope.h"
 #include "PCE/Input/PceAvenuePad6.h"
 #include "WS/Input/Pcv2Controller.h"
@@ -149,9 +150,40 @@ static int g_machine = M_NES;
 #define BTN_EXP_MAT (BTN_MAT + 12)
 #define BTN_HYPER_SHOT (BTN_EXP_MAT + 12)
 #define BTN_PARTY_TAP (BTN_HYPER_SHOT + 4)
-#define BTN_COUNT (BTN_PARTY_TAP + 6)
-/* the largest wire of any machine (the Super NES's: 2 + 5 x 12 + 8) */
-#define BTN_MAX 96
+/* (2026-11-01, the remaining devices) In the controller ports: 75 to 78
+ * P1 X, Y, L and R, 79 to 82 P2's (a Super NES controller's other buttons,
+ * an NTT Data Keypad's, the Virtual Boy controller's L and R); 83 to 86 P1
+ * Pad 2 Up, Down, Left and Right, 87 to 90 P2's (the Virtual Boy
+ * controller's second pad); 91 and 92 P1 Mouse Left and Right, 93 and 94
+ * P2's (the Super NES Mouse or the Subor mouse); 95 P2 Microphone (the
+ * Famicom's second controller); 96 to 110 P1 Keypad 0 to 9, *, #, ., C
+ * and End, 111 to 125 P2's (the NTT Data Keypad; the FCNS keypad on the
+ * expansion port takes P1's). On the expansion port: 126 and 127 the
+ * Pachinko controller's Press and Release, 128 to 135 the Exciting Boxing
+ * bag's eight sensors, 136 to 156 the Jissen Mahjong controller's 21
+ * buttons, 157 the Oeka Kids tablet's pen. On the cartridge: 158 to 160
+ * the Bandai microphone's A, B and voice (mapper 188). Then the keyboards:
+ * 161 to 232 the Family BASIC keyboard's 72 keys, 233 to 331 the Subor
+ * keyboard's 99, each in Mesen's order of its keys, which is the device's
+ * bit number. */
+#define BTN_P1_XYLR (BTN_PARTY_TAP + 6)
+#define BTN_P2_XYLR (BTN_P1_XYLR + 4)
+#define BTN_P1_PAD2 (BTN_P2_XYLR + 4)
+#define BTN_P2_PAD2 (BTN_P1_PAD2 + 4)
+#define BTN_MOUSE (BTN_P2_PAD2 + 4)
+#define BTN_MIC (BTN_MOUSE + 4)
+#define BTN_P1_KEYPAD (BTN_MIC + 1)
+#define BTN_P2_KEYPAD (BTN_P1_KEYPAD + 15)
+#define BTN_PACHINKO (BTN_P2_KEYPAD + 15)
+#define BTN_BOXING (BTN_PACHINKO + 2)
+#define BTN_MAHJONG (BTN_BOXING + 8)
+#define BTN_PEN (BTN_MAHJONG + 21)
+#define BTN_KARAOKE (BTN_PEN + 1)
+#define BTN_FB_KEYS (BTN_KARAOKE + 3)
+#define BTN_SUBOR_KEYS (BTN_FB_KEYS + 72)
+#define BTN_COUNT (BTN_SUBOR_KEYS + 99)
+/* the largest wire of any machine (the NES's) */
+#define BTN_MAX BTN_COUNT
 static uint8_t g_buttons[BTN_MAX];
 
 #define AXIS_ZAPPER_X 0
@@ -160,15 +192,34 @@ static uint8_t g_buttons[BTN_MAX];
 #define AXIS_EXP_ZAPPER_X 3
 #define AXIS_EXP_ZAPPER_Y 4
 #define AXIS_EXP_PADDLE 5
-#define AXIS_COUNT 6
-static int32_t g_axes[AXIS_COUNT] = { 32768, 32768, 80, 32768, 32768, 80 };
+/* (2026-11-01) 6 and 7 P1 Mouse X and Y, 8 and 9 P2's (the frame's
+ * movement, -127..127), 10 and 11 Expansion Pen X and Y (where the Oeka
+ * Kids tablet's pen is, 0..65535 across the picture), 12 and 13 Expansion
+ * Track X and Y (the Hori Track's ball, its movement in the frame) */
+#define AXIS_P1_MOUSE_X 6
+#define AXIS_P1_MOUSE_Y 7
+#define AXIS_P2_MOUSE_X 8
+#define AXIS_P2_MOUSE_Y 9
+#define AXIS_PEN_X 10
+#define AXIS_PEN_Y 11
+#define AXIS_TRACK_X 12
+#define AXIS_TRACK_Y 13
+#define AXIS_COUNT 14
+static int32_t g_axes[AXIS_COUNT] = { 32768, 32768, 80, 32768, 32768, 80, 0, 0, 0, 0, 32768, 32768, 0, 0 };
 
-/* what the ports hold (the settings port1, port2 and expansion) */
+/* what the ports hold (the settings port1, port2 and expansion). Either
+ * controller port can also hold the devices from PORT_SNES_PAD on, each in
+ * its own place in both lists. */
 enum { PORT1_GAMEPAD, PORT1_NONE, PORT1_FOUR_SCORE };
-enum { PORT2_NONE, PORT2_GAMEPAD, PORT2_ZAPPER, PORT2_ARKANOID, PORT2_POWER_PAD_A, PORT2_POWER_PAD_B };
+enum { PORT2_NONE, PORT2_GAMEPAD, PORT2_ZAPPER, PORT2_ARKANOID, PORT2_POWER_PAD_A, PORT2_POWER_PAD_B,
+	PORT2_FAMICOM_MIC };
+enum { PORT_SNES_PAD = 16, PORT_SNES_MOUSE, PORT_NTT_KEYPAD, PORT_SUBOR_MOUSE, PORT_VIRTUAL_BOY };
 enum { EXP_NONE, EXP_ZAPPER, EXP_ARKANOID, EXP_FOUR_PLAYER, EXP_EPSM, EXP_TRAINER_A, EXP_TRAINER_B, EXP_HYPER_SHOT,
-	EXP_PARTY_TAP };
+	EXP_PARTY_TAP, EXP_TWO_PLAYER, EXP_OEKA_KIDS, EXP_FAMILY_BASIC, EXP_PACHINKO, EXP_FCNS, EXP_BOXING, EXP_MAHJONG,
+	EXP_SUBOR_KEYBOARD, EXP_HORI_TRACK, EXP_BANDAI_HYPER_SHOT };
 static int g_port1 = PORT1_GAMEPAD, g_port2 = PORT2_NONE, g_exp = EXP_NONE;
+/* a Bandai microphone on the cartridge (mapper 188, Karaoke Studio) */
+static int g_karaoke;
 
 /* NES wire column -> NesController::Buttons bit */
 static const uint8_t kColToBit[BTN_PER_PAD] = {
@@ -428,6 +479,179 @@ static int set_hub(BaseControlDevice *device, int firstPlayer)
 	return 1;
 }
 
+/* what BaseControlDevice::SetMovement does (it is protected): the frame's
+ * movement added to what the device holds, which a mouse keeps in its
+ * coordinates and takes at its next strobe; clamped to how far it counts */
+static void add_movement(BaseControlDevice *device, int32_t dx, int32_t dy, int32_t most)
+{
+	dx = dx < -most ? -most : dx > most ? most : dx;
+	dy = dy < -most ? -most : dy > most ? most : dy;
+	MousePosition held = device->GetCoordinates();
+	MousePosition mov;
+	mov.X = (int16_t)(held.X + dx);
+	mov.Y = (int16_t)(held.Y + dy);
+	device->SetCoordinates(mov);
+}
+
+/* a Super NES controller's buttons, or an NTT Data Keypad's, in an NES
+ * port: the player's NES columns for the eight they share (A B Select Start
+ * Up Down Left Right) and the player's X, Y, L and R; the keypad's keys
+ * from the player's Keypad columns */
+static void set_snes_pad_on_nes(BaseControlDevice *device, int player)
+{
+	const uint8_t *pad = &g_buttons[BTN_CONSOLE + player * BTN_PER_PAD];
+	const uint8_t *xylr = &g_buttons[player ? BTN_P2_XYLR : BTN_P1_XYLR];
+	if (device->GetControllerType() == ControllerType::SnesNttDataKeypad) {
+		static const uint8_t bits[8] = { SnesNttDataKeypad::A, SnesNttDataKeypad::B, SnesNttDataKeypad::Select,
+			SnesNttDataKeypad::Start, SnesNttDataKeypad::Up, SnesNttDataKeypad::Down, SnesNttDataKeypad::Left,
+			SnesNttDataKeypad::Right };
+		for (int col = 0; col < BTN_PER_PAD; col++)
+			device->SetBitValue(bits[col], pad[col] != 0);
+		static const uint8_t more[4] = { SnesNttDataKeypad::X, SnesNttDataKeypad::Y, SnesNttDataKeypad::L, SnesNttDataKeypad::R };
+		for (int i = 0; i < 4; i++)
+			device->SetBitValue(more[i], xylr[i] != 0);
+		const uint8_t *keys = &g_buttons[player ? BTN_P2_KEYPAD : BTN_P1_KEYPAD];
+		for (int i = 0; i < 15; i++)
+			device->SetBitValue((uint8_t)(SnesNttDataKeypad::Num0 + i), keys[i] != 0);
+		return;
+	}
+	static const uint8_t bits[8] = { SnesController::A, SnesController::B, SnesController::Select, SnesController::Start,
+		SnesController::Up, SnesController::Down, SnesController::Left, SnesController::Right };
+	for (int col = 0; col < BTN_PER_PAD; col++)
+		device->SetBitValue(bits[col], pad[col] != 0);
+	static const uint8_t more[4] = { SnesController::X, SnesController::Y, SnesController::L, SnesController::R };
+	for (int i = 0; i < 4; i++)
+		device->SetBitValue(more[i], xylr[i] != 0);
+}
+
+/* a run of the wire's buttons onto the device's bits 0, 1, 2... */
+static void set_bits(BaseControlDevice *device, int first, int count, int firstBit = 0)
+{
+	for (int i = 0; i < count; i++)
+		device->SetBitValue((uint8_t)(firstBit + i), g_buttons[first + i] != 0);
+}
+
+/* The NES's devices added on 2026-11-01 (the ones before stay in
+ * ChimeraInput::SetInput as they were): 1 when the device was given its
+ * controls */
+static bool set_nes_device(BaseControlDevice *device, ControllerType t, int port)
+{
+	switch (t) {
+	case ControllerType::SnesController:
+	case ControllerType::SnesNttDataKeypad:
+		if (port < 0 || port > 1)
+			return false;
+		set_snes_pad_on_nes(device, port);
+		return true;
+	case ControllerType::SnesMouse:
+	case ControllerType::SuborMouse:
+		/* the Super NES Mouse counts up to 127 a strobe each way, the Subor
+		 * mouse up to 31 (Mesen clamps it, SuborMouse::RefreshStateBuffer) */
+		if (port < 0 || port > 1)
+			return false;
+		add_movement(device, g_axes[port ? AXIS_P2_MOUSE_X : AXIS_P1_MOUSE_X], g_axes[port ? AXIS_P2_MOUSE_Y : AXIS_P1_MOUSE_Y], 127);
+		set_bits(device, BTN_MOUSE + port * 2, 2); /* Left and Right are bits 0 and 1 of both */
+		return true;
+	case ControllerType::VirtualBoyController: {
+		/* its bits: Down1 Left1 Select Start Up0 Down0 Left0 Right0 Right1 Up1
+		 * L R B A (VirtualBoyController::Buttons; pad 0 is the left one) */
+		if (port < 0 || port > 1)
+			return false;
+		const uint8_t *pad = &g_buttons[BTN_CONSOLE + port * BTN_PER_PAD];
+		const uint8_t *xylr = &g_buttons[port ? BTN_P2_XYLR : BTN_P1_XYLR];
+		const uint8_t *pad2 = &g_buttons[port ? BTN_P2_PAD2 : BTN_P1_PAD2];
+		/* NES columns A B Select Start Up Down Left Right */
+		static const uint8_t padBits[8] = { 13, 12, 2, 3, 4, 5, 6, 7 };
+		for (int col = 0; col < BTN_PER_PAD; col++)
+			device->SetBitValue(padBits[col], pad[col] != 0);
+		device->SetBitValue(10, xylr[2] != 0); /* L */
+		device->SetBitValue(11, xylr[3] != 0); /* R */
+		/* Pad 2 Up Down Left Right */
+		static const uint8_t pad2Bits[4] = { 9, 0, 1, 8 };
+		for (int i = 0; i < 4; i++)
+			device->SetBitValue(pad2Bits[i], pad2[i] != 0);
+		return true;
+	}
+	case ControllerType::TwoPlayerAdapter: {
+		/* the Famicom's two-player adapter: two pads read on the expansion
+		 * port's data line, players 1 and 2 */
+		IControllerHub *hub = dynamic_cast<IControllerHub *>(device);
+		if (hub == nullptr)
+			return false;
+		for (int i = 0; i < hub->GetHubPortCount() && i < 2; i++) {
+			shared_ptr<BaseControlDevice> pad = hub->GetController(i);
+			if (pad)
+				set_pad(pad.get(), i);
+		}
+		hub->RefreshHubState();
+		return true;
+	}
+	case ControllerType::Pachinko:
+		/* a pad (player 1's buttons) and the knob's Press and Release, its
+		 * bits 8 and 9: Mesen turns the knob a step at each strobe while one
+		 * is held (PachinkoController::RefreshStateBuffer) */
+		set_pad(device, 0);
+		set_bits(device, BTN_PACHINKO, 2, 8);
+		return true;
+	case ControllerType::FcnsController:
+		/* a pad (player 1's buttons) and its fifteen keys, bits 8 to 22,
+		 * from P1's Keypad columns */
+		set_pad(device, 0);
+		set_bits(device, BTN_P1_KEYPAD, 15, 8);
+		return true;
+	case ControllerType::HoriTrack:
+		/* a pad (player 1's buttons) and the ball's movement, which Mesen
+		 * clamps to -8..7 a strobe */
+		set_pad(device, 0);
+		add_movement(device, g_axes[AXIS_TRACK_X], g_axes[AXIS_TRACK_Y], 127);
+		return true;
+	case ControllerType::BandaiHyperShot: {
+		/* a pad (player 1's buttons), and a light gun: its trigger and where
+		 * it points are the Famicom Zapper's (Expansion Trigger, Expansion
+		 * Zapper X and Y) */
+		set_pad(device, 0);
+		MousePosition pos;
+		pos.X = (int16_t)((int64_t)g_axes[AXIS_EXP_ZAPPER_X] * 256 / 65536);
+		pos.Y = (int16_t)((int64_t)g_axes[AXIS_EXP_ZAPPER_Y] * 240 / 65536);
+		device->SetCoordinates(pos);
+		device->SetBitValue(9, g_buttons[BTN_EXP_TRIGGER] != 0);
+		return true;
+	}
+	case ControllerType::OekaKidsTablet: {
+		/* where the pen is (the picture's pixels) and whether it presses;
+		 * Mesen takes the pen as touching the tablet whenever it is below the
+		 * top 48 lines, pressed or not (OekaKidsTablet::InternalSetStateFromInput) */
+		MousePosition pos;
+		pos.X = (int16_t)((int64_t)g_axes[AXIS_PEN_X] * 256 / 65536);
+		pos.Y = (int16_t)((int64_t)g_axes[AXIS_PEN_Y] * 240 / 65536);
+		device->SetCoordinates(pos);
+		device->SetBitValue(0, g_buttons[BTN_PEN] != 0);
+		device->SetBitValue(1, g_buttons[BTN_PEN] != 0 || pos.Y >= 48);
+		return true;
+	}
+	case ControllerType::ExcitingBoxing:
+		set_bits(device, BTN_BOXING, 8);
+		return true;
+	case ControllerType::JissenMahjong:
+		set_bits(device, BTN_MAHJONG, 21);
+		return true;
+	case ControllerType::FamilyBasicKeyboard:
+		set_bits(device, BTN_FB_KEYS, 72);
+		return true;
+	case ControllerType::SuborKeyboard:
+		set_bits(device, BTN_SUBOR_KEYS, 99);
+		return true;
+	case ControllerType::BandaiMicrophone:
+		/* A and B, and the voice, heard on every second frame while held, as
+		 * Mesen gives it from a key */
+		set_bits(device, BTN_KARAOKE, 2);
+		device->SetBitValue(2, g_buttons[BTN_KARAOKE + 2] && g_emu->GetFrameCount() % 2 == 0);
+		return true;
+	default:
+		return false;
+	}
+}
+
 class ChimeraInput : public IInputProvider
 {
 public:
@@ -435,6 +659,8 @@ public:
 	{
 		ControllerType t = device->GetControllerType();
 		int port = device->GetPort();
+		if (g_machine == M_NES && set_nes_device(device, t, port))
+			return true;
 		switch (t) {
 		case ControllerType::NesController:
 		case ControllerType::FamicomController:
@@ -442,6 +668,11 @@ public:
 			if (port < 0 || port > 1)
 				return false;
 			set_pad(device, port);
+			/* the Famicom's second controller has a microphone: held, it is
+			 * heard on every third frame, as Mesen gives it from a key (a
+			 * voice is not one steady sound) */
+			if (t == ControllerType::FamicomControllerP2 && port == 1)
+				device->SetBitValue(NesController::Microphone, g_buttons[BTN_MIC] && g_emu->GetFrameCount() % 3 == 0);
 			return true;
 		case ControllerType::FourScore:
 		case ControllerType::FourPlayerAdapter: {
@@ -675,15 +906,45 @@ static int setting_choice(const char *name, const char *const *options, int coun
 	return dflt;
 }
 
+/* a port setting's value: the port's own devices, then the ones either
+ * port can hold (from PORT_SNES_PAD) */
+static int port_choice(const char *name, const char *const *own, int count, int dflt)
+{
+	static const char *const either[] = { "snesPad", "snesMouse", "nttKeypad", "suborMouse", "virtualBoy" };
+	const char *opts[16];
+	int n = 0;
+	for (int i = 0; i < count; i++)
+		opts[n++] = own[i];
+	for (int i = 0; i < 5; i++)
+		opts[n++] = either[i];
+	int v = setting_choice(name, opts, n, dflt);
+	return v < count ? v : PORT_SNES_PAD + (v - count);
+}
+
 static void read_ports(void)
 {
 	static const char *const opts1[] = { "gamepad", "none", "fourScore" };
-	static const char *const opts2[] = { "none", "gamepad", "zapper", "arkanoid", "powerPadA", "powerPadB" };
+	static const char *const opts2[] = { "none", "gamepad", "zapper", "arkanoid", "powerPadA", "powerPadB", "famicomPad" };
 	static const char *const optsExp[] = { "none", "famicomZapper", "famicomArkanoid", "fourPlayerAdapter", "epsm",
-		"familyTrainerA", "familyTrainerB", "konamiHyperShot", "partyTap" };
-	g_port1 = setting_choice("port1", opts1, 3, PORT1_GAMEPAD);
-	g_port2 = setting_choice("port2", opts2, 6, PORT2_NONE);
-	g_exp = setting_choice("expansion", optsExp, 9, EXP_NONE);
+		"familyTrainerA", "familyTrainerB", "konamiHyperShot", "partyTap", "twoPlayerAdapter", "oekaKids",
+		"familyBasicKeyboard", "pachinko", "fcns", "excitingBoxing", "jissenMahjong", "suborKeyboard", "horiTrack",
+		"bandaiHyperShot" };
+	g_port1 = port_choice("port1", opts1, 3, PORT1_GAMEPAD);
+	g_port2 = port_choice("port2", opts2, 7, PORT2_NONE);
+	g_exp = setting_choice("expansion", optsExp, 19, EXP_NONE);
+}
+
+/* what Mesen calls the device a port value stands for */
+static ControllerType either_port_type(int v)
+{
+	switch (v) {
+	case PORT_SNES_PAD: return ControllerType::SnesController;
+	case PORT_SNES_MOUSE: return ControllerType::SnesMouse;
+	case PORT_NTT_KEYPAD: return ControllerType::SnesNttDataKeypad;
+	case PORT_SUBOR_MOUSE: return ControllerType::SuborMouse;
+	case PORT_VIRTUAL_BOY: return ControllerType::VirtualBoyController;
+	default: return ControllerType::None;
+	}
 }
 
 static const char *const kRamStates[] = { "zeros", "ones", "random" };
@@ -707,7 +968,7 @@ static void configure_nes(EmuSettings *s)
 	read_ports();
 	static const ControllerType port2Types[] = { ControllerType::None, ControllerType::NesController,
 		ControllerType::NesZapper, ControllerType::NesArkanoidController, ControllerType::PowerPadSideA,
-		ControllerType::PowerPadSideB };
+		ControllerType::PowerPadSideB, ControllerType::FamicomControllerP2 };
 	if (g_port1 == PORT1_FOUR_SCORE) {
 		/* the Four Score takes both ports and holds four pads */
 		nes.Port1.Type = ControllerType::FourScore;
@@ -715,22 +976,36 @@ static void configure_nes(EmuSettings *s)
 			nes.Port1SubPorts[i].Type = ControllerType::NesController;
 		nes.Port2.Type = ControllerType::None;
 	} else {
-		nes.Port1.Type = g_port1 == PORT1_GAMEPAD ? ControllerType::NesController : ControllerType::None;
-		nes.Port2.Type = port2Types[g_port2];
+		nes.Port1.Type = g_port1 >= PORT_SNES_PAD ? either_port_type(g_port1)
+			: g_port1 == PORT1_GAMEPAD ? ControllerType::NesController : ControllerType::None;
+		nes.Port2.Type = g_port2 >= PORT_SNES_PAD ? either_port_type(g_port2) : port2Types[g_port2];
 	}
 	/* the Famicom's expansion port, beside the two controller ports (Mesen
 	 * plugs it in whatever console it emulates) */
 	static const ControllerType expTypes[] = { ControllerType::None, ControllerType::FamicomZapper,
 		ControllerType::FamicomArkanoidController, ControllerType::FourPlayerAdapter, ControllerType::None,
 		ControllerType::FamilyTrainerMatSideA, ControllerType::FamilyTrainerMatSideB, ControllerType::KonamiHyperShot,
-		ControllerType::PartyTap };
+		ControllerType::PartyTap, ControllerType::TwoPlayerAdapter, ControllerType::OekaKidsTablet,
+		ControllerType::FamilyBasicKeyboard, ControllerType::Pachinko, ControllerType::FcnsController,
+		ControllerType::ExcitingBoxing, ControllerType::JissenMahjong, ControllerType::SuborKeyboard,
+		ControllerType::HoriTrack, ControllerType::BandaiHyperShot };
 	nes.ExpPort.Type = expTypes[g_exp];
 	/* the EPSM in the expansion port: Mesen builds it with the cartridge, as
 	 * for a header that asks for it (patch 0008). A header that asks for it
 	 * plugs it in whatever this setting says, as in Mesen. */
 	MesenExpansionEpsm = g_exp == EXP_EPSM;
 	for (int i = 0; i < 4; i++)
-		nes.ExpPortSubPorts[i].Type = g_exp == EXP_FOUR_PLAYER ? ControllerType::NesController : ControllerType::None;
+		nes.ExpPortSubPorts[i].Type = g_exp == EXP_FOUR_PLAYER || (g_exp == EXP_TWO_PLAYER && i < 2)
+			? ControllerType::NesController : ControllerType::None;
+	/* the console: the NES (NES-001, Mesen's default), the top-loading
+	 * NES-101, the Famicom (HVC-001) or the AV Famicom (HVC-101). Mesen tells
+	 * them apart by what a read of the controller ports finds on the bus's
+	 * undriven lines, and on the Famicom by a read of $4016 the CPU repeats
+	 * (when the sound chip takes the bus) reaching the controller twice */
+	static const char *const models[] = { "nes001", "nes101", "hvc001", "hvc101" };
+	static const NesConsoleType modelValues[] = { NesConsoleType::Nes001, NesConsoleType::Nes101,
+		NesConsoleType::Hvc001, NesConsoleType::Hvc101 };
+	nes.ConsoleType = modelValues[setting_choice("nesModel", models, 4, 0)];
 	nes.LightDetectionRadius = 0; /* Mesen's UI's default */
 	nes.AutoConfigureInput = false; /* the project's ports decide, not the database */
 	nes.EnableHdPacks = false;
@@ -1517,6 +1792,11 @@ ECL_EXPORT int Init(void)
 	g_epsm = nes != nullptr && nes->GetEpsm() != nullptr;
 	Fds *fds = nes != nullptr ? dynamic_cast<Fds *>(nes->GetMapper()) : nullptr;
 	g_fds = fds != nullptr ? (int)fds->GetSideCount() : 0;
+	/* Karaoke Studio's cartridge (mapper 188) has a microphone with two
+	 * buttons of its own */
+	g_karaoke = nes != nullptr && nes->GetControlManager()->HasControlDevice(ControllerType::BandaiMicrophone);
+	if (g_karaoke)
+		fprintf(stderr, "[mesen] Bandai microphone on the cartridge\n");
 	g_diskSelected = 0;
 	memset(g_diskWas, 0, sizeof g_diskWas);
 	if (g_fds)
@@ -1690,15 +1970,26 @@ ECL_EXPORT int IsButtonActive(int32_t index)
 	}
 	int fourScore = g_port1 == PORT1_FOUR_SCORE;
 	/* the four-player adapter's players are players 1 to 4; with a pad in
-	 * a controller port as well, that pad and the adapter's are one player */
+	 * a controller port as well, that pad and the adapter's are one player.
+	 * The two-player adapter's are players 1 and 2; the expansion port's
+	 * devices that are a pad with more (the Pachinko and FCNS controllers,
+	 * the Hori Track, Bandai's Hyper Shot) are player 1's pad. */
 	int adapter = g_exp == EXP_FOUR_PLAYER;
+	int adapter2 = adapter || g_exp == EXP_TWO_PLAYER;
+	int expPad = adapter2 || g_exp == EXP_PACHINKO || g_exp == EXP_FCNS || g_exp == EXP_HORI_TRACK
+		|| g_exp == EXP_BANDAI_HYPER_SHOT;
+	/* which devices in the controller ports use a pad's eight columns */
+	int pad1 = g_port1 == PORT1_GAMEPAD || fourScore || g_port1 == PORT_SNES_PAD || g_port1 == PORT_NTT_KEYPAD
+		|| g_port1 == PORT_VIRTUAL_BOY;
+	int pad2 = g_port2 == PORT2_GAMEPAD || g_port2 == PORT2_FAMICOM_MIC || g_port2 == PORT_SNES_PAD
+		|| g_port2 == PORT_NTT_KEYPAD || g_port2 == PORT_VIRTUAL_BOY;
 	if (index < BTN_CONSOLE)
 		return index >= 0;
 	if (index < BTN_TRIGGER) {
 		int player = (index - BTN_CONSOLE) / BTN_PER_PAD;
 		switch (player) {
-		case 0: return g_port1 != PORT1_NONE || adapter;
-		case 1: return fourScore || g_port2 == PORT2_GAMEPAD || adapter;
+		case 0: return pad1 || expPad;
+		case 1: return fourScore || pad2 || adapter2;
 		default: return fourScore || adapter;
 		}
 	}
@@ -1707,7 +1998,7 @@ ECL_EXPORT int IsButtonActive(int32_t index)
 	if (index == BTN_FIRE)
 		return !fourScore && g_port2 == PORT2_ARKANOID;
 	if (index == BTN_EXP_TRIGGER)
-		return g_exp == EXP_ZAPPER;
+		return g_exp == EXP_ZAPPER || g_exp == EXP_BANDAI_HYPER_SHOT;
 	if (index == BTN_EXP_FIRE)
 		return g_exp == EXP_ARKANOID;
 	if (index == BTN_PREV_DISK || index == BTN_NEXT_DISK)
@@ -1720,8 +2011,43 @@ ECL_EXPORT int IsButtonActive(int32_t index)
 		return g_exp == EXP_TRAINER_A || g_exp == EXP_TRAINER_B;
 	if (index >= BTN_HYPER_SHOT && index < BTN_PARTY_TAP)
 		return g_exp == EXP_HYPER_SHOT;
-	if (index >= BTN_PARTY_TAP && index < BTN_COUNT)
+	if (index >= BTN_PARTY_TAP && index < BTN_PARTY_TAP + 6)
 		return g_exp == EXP_PARTY_TAP;
+	/* the devices of 2026-11-01: a port's (P1's or P2's) */
+	if (index >= BTN_P1_XYLR && index < BTN_P1_PAD2) {
+		int p2 = index >= BTN_P2_XYLR;
+		int v = p2 ? (fourScore ? -1 : g_port2) : g_port1;
+		/* X and Y are the Super NES controller's and keypad's; L and R the
+		 * Virtual Boy controller's too */
+		int xy = (index - (p2 ? BTN_P2_XYLR : BTN_P1_XYLR)) < 2;
+		return v == PORT_SNES_PAD || v == PORT_NTT_KEYPAD || (!xy && v == PORT_VIRTUAL_BOY);
+	}
+	if (index >= BTN_P1_PAD2 && index < BTN_MOUSE)
+		return (index >= BTN_P2_PAD2 ? (fourScore ? -1 : g_port2) : g_port1) == PORT_VIRTUAL_BOY;
+	if (index >= BTN_MOUSE && index < BTN_MIC) {
+		int v = index >= BTN_MOUSE + 2 ? (fourScore ? -1 : g_port2) : g_port1;
+		return v == PORT_SNES_MOUSE || v == PORT_SUBOR_MOUSE;
+	}
+	if (index == BTN_MIC)
+		return !fourScore && g_port2 == PORT2_FAMICOM_MIC;
+	if (index >= BTN_P1_KEYPAD && index < BTN_P2_KEYPAD)
+		return g_port1 == PORT_NTT_KEYPAD || g_exp == EXP_FCNS;
+	if (index >= BTN_P2_KEYPAD && index < BTN_PACHINKO)
+		return !fourScore && g_port2 == PORT_NTT_KEYPAD;
+	if (index >= BTN_PACHINKO && index < BTN_BOXING)
+		return g_exp == EXP_PACHINKO;
+	if (index >= BTN_BOXING && index < BTN_MAHJONG)
+		return g_exp == EXP_BOXING;
+	if (index >= BTN_MAHJONG && index < BTN_PEN)
+		return g_exp == EXP_MAHJONG;
+	if (index == BTN_PEN)
+		return g_exp == EXP_OEKA_KIDS;
+	if (index >= BTN_KARAOKE && index < BTN_FB_KEYS)
+		return g_karaoke;
+	if (index >= BTN_FB_KEYS && index < BTN_SUBOR_KEYS)
+		return g_exp == EXP_FAMILY_BASIC;
+	if (index >= BTN_SUBOR_KEYS && index < BTN_COUNT)
+		return g_exp == EXP_SUBOR_KEYBOARD;
 	return 0;
 }
 
@@ -1751,9 +2077,17 @@ ECL_EXPORT int IsAxisActive(int32_t index)
 	if (index == AXIS_PADDLE)
 		return !fourScore && g_port2 == PORT2_ARKANOID;
 	if (index == AXIS_EXP_ZAPPER_X || index == AXIS_EXP_ZAPPER_Y)
-		return g_exp == EXP_ZAPPER;
+		return g_exp == EXP_ZAPPER || g_exp == EXP_BANDAI_HYPER_SHOT;
 	if (index == AXIS_EXP_PADDLE)
 		return g_exp == EXP_ARKANOID;
+	if (index == AXIS_P1_MOUSE_X || index == AXIS_P1_MOUSE_Y)
+		return g_port1 == PORT_SNES_MOUSE || g_port1 == PORT_SUBOR_MOUSE;
+	if (index == AXIS_P2_MOUSE_X || index == AXIS_P2_MOUSE_Y)
+		return !fourScore && (g_port2 == PORT_SNES_MOUSE || g_port2 == PORT_SUBOR_MOUSE);
+	if (index == AXIS_PEN_X || index == AXIS_PEN_Y)
+		return g_exp == EXP_OEKA_KIDS;
+	if (index == AXIS_TRACK_X || index == AXIS_TRACK_Y)
+		return g_exp == EXP_HORI_TRACK;
 	return 0;
 }
 
