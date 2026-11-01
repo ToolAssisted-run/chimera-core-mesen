@@ -391,6 +391,7 @@ systems_core() {
 	python3 -I "$root/tests/snes-test/make-snes-test.py" "$snes"
 	sys_program_legs snes snes "$root/tests/roms/snes-test.sfc" '{"machine":"snes"}' 2 480 WRAM
 	sys_program_legs snes-multitap snes "$root/tests/roms/snes-test.sfc" '{"machine":"snes","snesPort2":"multitap"}' 5 480 WRAM
+	sys_clock_leg snes snes "$snes/snes-rtc.sfc" WRAM '{"machine":"snes"}'
 
 	# The chips that run a program of their own: Mesen refuses the cartridge
 	# without the program's file (the core says which), and the DSP-1's (and
@@ -427,6 +428,7 @@ systems_core() {
 	# ------------------------------------------------------------ the Game Boy and Game Boy Color
 	sys_program_legs gb gb "$root/tests/roms/gb-test.gb" '{"machine":"gb"}' 1 600 WRAM
 	sys_program_legs gbc gbc "$root/tests/roms/gb-test.gb" '{"machine":"gbc"}' 1 600 WRAM
+	sys_clock_leg gb gb "$root/tests/roms/gb-rtc.gb" WRAM '{"machine":"gb"}'
 	local gbg="$scontent/systems/gb" gbcg="$scontent/systems/gbc"
 	sys_game_leg gb:game:bugsbunny gb "$gbg/Bugs Bunny - Crazy Castle II (U) [!].gb" '{"machine":"gb"}' 1800
 	sys_game_leg gb:game:fairy gb "$gbg/A_FAIRY_WITHOUT_WINGS_v1_3_0.gb" '{"machine":"gb"}' 1800
@@ -444,6 +446,7 @@ systems_core() {
 	# none and runs on CI with that setting, which also skips the boot screen.
 	sys_program_legs gba gba "$root/tests/roms/gba-test.gba" '{"machine":"gba","gbaBios":"none"}' 1 600 EWRAM
 	sys_gba_rtc_leg
+	sys_clock_leg gba gba "$root/tests/roms/gba-test.gba" EWRAM '{"machine":"gba","gbaBios":"none"}'
 	sys_gba_skip_leg
 	local wn
 	wn="$(sysdir gba-nobios "$root/tests/roms/gb-test.gb" '{"machine":"gba"}')"
@@ -489,6 +492,7 @@ systems_core() {
 	sys_program_legs wsc wsc "$root/tests/roms/ws-test.ws" '{"machine":"wsc"}' 1 480 "Work RAM"
 	sys_program_legs pcv2 pcv2 "$root/tests/roms/ws-test.ws" '{"machine":"pcv2"}' 1 480 "Work RAM"
 	sys_swancrystal_leg
+	sys_clock_leg ws ws "$root/tests/roms/ws-rtc.ws" "Work RAM" '{"machine":"ws"}'
 
 	# ------------------------------------------------------------ the devices beyond the pad
 	local dev
@@ -558,6 +562,46 @@ sys_gba_rtc_leg() {
 	else
 		report "gba:rtc" PASS "after 600 frames, the host stopped 3 s on the way, the cartridge's clock says 2000-01-01 00:00:10 in both flavors: the machine's time, not the host's"
 	fi
+}
+
+# Clock Start reaches the cartridges' clocks (patch 0013, the owner's
+# decision of 2026-11-01): a test program that reads its cartridge's clock
+# every frame (clocks.py says where it keeps it) runs 600 frames with the
+# setting at its default (2000-01-01 00:00:00) and at 2026-11-01 13:45:30,
+# natively, in the sandbox and in the sandbox with a save and a load around
+# every frame; the clock must say the date and time the project's Clock
+# Start gives, moved on by the machine's time. Without the patch every one
+# of these clocks starts at 2000-01-01 (the RTC-4513 at nothing at all),
+# whatever the setting says.
+CLOCK_START=1793540730
+sys_clock_leg() { # tag machine rom domain settings
+	local tag="$1" m="$2" rom="$3" domain="$4" settings="$5" ck="$here/tests/clocks.py"
+	local wire start wd want got gotbox said="" n=0
+	wire="$(python3 -I "$sys_py" wire "$m")"
+	for start in 946684800 "$CLOCK_START"; do
+		n=$((n + 1))
+		local set="$settings"
+		[ "$start" = 946684800 ] || set="${settings%\}},\"rtcStart\":$start}"
+		wd="$(sysdir "$tag-clock$n" "$rom" "$set")"
+		local args=(--frames 600 --wire "$wire")
+		"$rn" "$wd" "${args[@]}" --dump-domain "$domain" "$work/$tag-clock$n.nat.ram" 2>/dev/null | digests > "$work/$tag-clock$n.nat"
+		rw "$wd" "${args[@]}" --dump-domain "$domain" "$work/$tag-clock$n.box.ram" 2>/dev/null | digests > "$work/$tag-clock$n.box"
+		rw "$wd" "${args[@]}" --rerecord 2>/dev/null | digests > "$work/$tag-clock$n.rr"
+		want="$(python3 -I "$ck" expect "$m" "$start" 600)"
+		got="$(python3 -I "$ck" read "$m" "$work/$tag-clock$n.nat.ram" 2>/dev/null)"
+		gotbox="$(python3 -I "$ck" read "$m" "$work/$tag-clock$n.box.ram" 2>/dev/null)"
+		if [ ! -s "$work/$tag-clock$n.box" ] || ! cmp -s "$work/$tag-clock$n.nat" "$work/$tag-clock$n.box" \
+			|| ! cmp -s "$work/$tag-clock$n.box" "$work/$tag-clock$n.rr" || [ "$got" != "$gotbox" ]; then
+			report "$tag:clock-start" FAIL "Clock Start $start: native, sandbox and saved-and-loaded runs differ (clock native $got, sandbox $gotbox)"
+			return
+		fi
+		if [ "$got" != "$want" ]; then
+			report "$tag:clock-start" FAIL "Clock Start $start: after 600 frames the clock says $(python3 -I "$ck" say "$m" "$got"), not $(python3 -I "$ck" say "$m" "$want")"
+			return
+		fi
+		said="$said${said:+; }$(python3 -I "$ck" say "$m" "$got")"
+	done
+	report "$tag:clock-start" PASS "after 600 frames the cartridge's clock says $said: Clock Start at its default and at 2026-11-01 13:45:30, moved on by the machine's time; native == sandbox == saved and loaded each frame"
 }
 
 # Skip Boot Screen with Nintendo's BIOS (the owner's file): on, the test
@@ -868,6 +912,31 @@ systems_engine() {
 	sys_engine_leg engine:wsc wsc "$root/tests/roms/ws-test.ws" '{"machine":"wsc"}' 1 480 "Work RAM"
 	sys_engine_leg engine:gba-test gba "$root/tests/roms/gba-test.gba" '{"machine":"gba","gbaBios":"none"}' 1 600 EWRAM
 	sys_polls_leg engine:gba-polls gba "$root/tests/roms/gba-test.gba" '{"machine":"gba","gbaBios":"none"}' 1 300
+	# Clock Start through Chimera: projects whose Clock Start is 2026-11-01
+	# 13:45:30, made by chimera-run with the setting, replayed by another;
+	# the Game Boy Advance's and the Game Boy's test programs read their
+	# cartridges' clocks at that date and time, moved on by the machine's
+	# time (the native reference, given the project's settings, too)
+	local ck="$here/tests/clocks.py" cm crom cdom ctag cgot cwant csaid="" cfail=""
+	for cm in gba gb; do
+		case "$cm" in
+		gba) crom="$root/tests/roms/gba-test.gba"; cdom=EWRAM; ctag='{"machine":"gba","gbaBios":"none","rtcStart":'"$CLOCK_START"'}' ;;
+		gb) crom="$root/tests/roms/gb-rtc.gb"; cdom=WRAM; ctag='{"machine":"gb","rtcStart":'"$CLOCK_START"'}' ;;
+		esac
+		sys_engine_leg "engine:$cm-clock" "$cm" "$crom" "$ctag" 1 600 "$cdom"
+		cgot="$(python3 -I "$ck" read "$cm" "$work/engine:$cm-clock.engine.ram" 2>/dev/null)"
+		cwant="$(python3 -I "$ck" expect "$cm" "$CLOCK_START" 600)"
+		if [ "$cgot" != "$cwant" ]; then
+			cfail="$cfail${cfail:+; }$cm's clock says ${cgot:-nothing}, not $cwant"
+		else
+			csaid="$csaid${csaid:+; }$(python3 -I "$ck" say "$cm" "$cgot")"
+		fi
+	done
+	if [ -n "$cfail" ]; then
+		report "engine:clock-start" FAIL "through Chimera: $cfail"
+	else
+		report "engine:clock-start" PASS "projects made by chimera-run with Clock Start 2026-11-01 13:45:30: after 600 frames the clocks say $csaid (the Game Boy Advance's, the Game Boy's)"
+	fi
 	sys_polls_leg engine:pce-polls pce "$root/tests/roms/pce-test.pce" '{"machine":"pce"}' 1 300
 	sys_engine_leg engine:pcv2 pcv2 "$root/tests/roms/ws-test.ws" '{"machine":"pcv2"}' 1 480 "Work RAM"
 	local dev

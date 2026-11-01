@@ -17,6 +17,12 @@
 ;     $0104 (on a colour console, bit 7 is set on the SwanCrystal);
 ;   - the background's shade is the X group's bits and the Y group's, and
 ;     channel 1 plays at a frequency they give.
+; Assembled with RTC defined (ws-rtc.ws), the cartridge's header says it is
+; a Bandai 2003 cartridge with a clock (an S-3511A), and each frame the
+; program also reads the clock's date and time (port $CA: command 5, then
+; seven bytes through port $CB, each when bit 7 of $CA says it is ready) and
+; keeps the seven bytes (year, month, day, day of week, hour, minute,
+; second, BCD) at $0110.
 ; The program starts 16 bytes into the cartridge, where the Pocket Challenge
 ; V2 starts (4000:0010; the WonderSwans start at the jump at the end), so
 ; the same file is that machine's test too. On the Pocket Challenge V2 the
@@ -90,6 +96,20 @@ main:
 	inc byte [0x0103]
 	in al, 0x62
 	mov [0x0104], al         ; the console's model (SwanCrystal: bit 7)
+%ifdef RTC
+	mov al, 0x15
+	out 0xCA, al             ; the clock: command 5 (read the date and time)
+	mov di, 0x0110
+	mov cx, 7
+rtcbyte:
+	in al, 0xCA
+	test al, 0x80
+	jz rtcbyte               ; wait until the next byte is there
+	in al, 0xCB
+	mov [di], al
+	inc di
+	loop rtcbyte
+%endif
 	mov al, [0x0100]
 	shl al, 4
 	or al, [0x0101]
@@ -115,5 +135,9 @@ leave:
 	db 0x00                  ; ROM size
 	db 0x00                  ; save type: none
 	db 0x04                  ; flags
+%ifdef RTC
+	db 0x01                  ; a Bandai 2003 cartridge, with a clock
+%else
 	db 0x00                  ; no clock
+%endif
 	dw 0x0000                ; checksum (written by make-ws-test.py)

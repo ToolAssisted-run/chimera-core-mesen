@@ -27,6 +27,10 @@ V2**. The Satellaview (.bs) and the Sufami Turbo (.st) are declared but not
 tried: no BIOS for them was at hand. An NES project made before keeps
 playing as it did.
 
+A cartridge's clock (Game Boy Advance, WonderSwan, Game Boy MBC3, the
+Super NES's SPC7110) starts at the project's **Clock Start** and moves with
+the game's own time, never the computer's.
+
 Mesen's other controllers are offered too: the **Super NES Mouse** and the
 **Super Scope**, the Master System's **Light Phaser** and the PC Engine's
 six-button **Avenue Pad 6**, each a choice of a port setting; the mice and

@@ -64,3 +64,9 @@ The input schedules in `tests/inputs/` were written for this repository.
 - `pce-pad6.pce` - the PC Engine test program reading the port twice a
   frame, for the six-button Avenue Pad 6, built by
   `tests/pce-test/make-pce-test.py`.
+- `gb-rtc.gb` - the Game Boy test program on an MBC3 cartridge with a
+  clock, built by `tests/gb-test/make-gb-test.py`: it also reads the clock
+  every frame.
+- `ws-rtc.ws` - the WonderSwan test program on a Bandai 2003 cartridge with
+  a clock, built from `tests/ws-test/ws-test.asm` (with `RTC` defined): it
+  also reads the clock's date and time every frame.

@@ -11,7 +11,12 @@ cartridge per chip that runs a program of its own, each only a header and
 the same test program: snes-dsp1.sfc, snes-dsp1b.sfc, snes-dsp2.sfc,
 snes-dsp3.sfc, snes-dsp4.sfc, snes-st010.sfc, snes-st011.sfc and
 snes-st018.sfc. Mesen tells the chips apart by the header's ROM type and
-title, as it does for the games that have them.
+title, as it does for the games that have them. snes-rtc.sfc is the same
+program on a cartridge with an SPC7110 and its clock (the RTC-4513); each
+frame it also reads the clock (below). That one is 64 KiB with its header
+where a HiROM cartridge has it ($FFC0 of the file): Mesen maps an SPC7110
+cartridge's program the HiROM way ($00:8000 is the file's $8000), and its
+mapping does not wrap round a 32 KiB file. The first 32 KiB are zeros.
 
 What the program does:
   - at power on it clears its RAM, turns every layer off (so the picture
@@ -39,6 +44,13 @@ fourth bytes (its vertical and horizontal movement). Then it keeps the
 picture chip's latched beam position, which the Super Scope sets where it
 points: $213F (bit 6: latched) at $60, $213C twice (horizontal, low then
 high) at $61-$62, $213D twice (vertical) at $63-$64.
+
+snes-rtc.sfc also reads the SPC7110's clock each frame, after the pads: it
+turns the clock on ($4840 = 1), asks to read from register 0 ($4841 = $0C,
+then 0), reads the sixteen registers ($4841 sixteen times: seconds,
+minutes, hours, day, month and year, a digit each, low digit first, then
+the day of the week and three control registers) into RAM $70-$7F, and
+turns the clock off again ($4840 = 0).
 
 This is our own program, written for this repository's tests; it is under
 the repository's licence.
@@ -84,7 +96,7 @@ def hi(v):
     return (v >> 8) & 0xFF
 
 
-def program(dsp_test, devices=False):
+def program(dsp_test, devices=False, rtc=False):
     a = Asm(0x8000)
     a.label("reset")
     a.b(0x78)                      # SEI
@@ -168,6 +180,16 @@ def program(dsp_test, devices=False):
         a.b(0xE8, 0xE0, 0x10)          # INX; CPX #16
         a.br(0xD0, "manual")
         a.b(0xA9, 0x80, 0x8D, 0x01, 0x42)  # the I/O line high again
+    if rtc:
+        a.b(0xA9, 0x01, 0x8D, 0x40, 0x48)  # $4840 = 1: the clock on
+        a.b(0xA9, 0x0C, 0x8D, 0x41, 0x48)  # $4841 = $0C: read
+        a.b(0x9C, 0x41, 0x48)              # $4841 = 0: from register 0
+        a.b(0xA2, 0x00)
+        a.label("rtc")
+        a.b(0xAD, 0x41, 0x48, 0x95, 0x70)  # LDA $4841; STA $70,X
+        a.b(0xE8, 0xE0, 0x10)              # INX; CPX #16
+        a.br(0xD0, "rtc")
+        a.b(0x9C, 0x40, 0x48)              # $4840 = 0: the clock off
     a.b(0xE6, 0x00)                # INC $00
     a.b(0x9C, 0x21, 0x21)          # CGRAM address 0: the backdrop
     a.b(0xA5, 0x11, 0x8D, 0x22, 0x21)  # pad 1's B Y Select Start Up Down Left Right
@@ -193,12 +215,13 @@ CARTS = {
     "snes-st010": ("CHIMERA ST010 TEST", 0xF5, 0x01),
     "snes-st011": ("2DAN MORITA SHOUGI", 0xF5, 0x01),
     "snes-st018": ("CHIMERA ST018 TEST", 0xF5, 0x02),
+    "snes-rtc": ("CHIMERA RTC TEST", 0xF9, 0x00),
 }
 
 
 def cart(name):
     title, rom_type, cart_type = CARTS[name]
-    code, labels = program(name in ("snes-dsp1", "snes-dsp1b"), name == "snes-devices")
+    code, labels = program(name in ("snes-dsp1", "snes-dsp1b"), name == "snes-devices", name == "snes-rtc")
     rom = bytearray(0x8000)
     rom[0:len(code)] = code
     if isinstance(title, str):
@@ -217,9 +240,16 @@ def cart(name):
     rom[0x7FFA:0x7FFC] = labels["nmi"].to_bytes(2, "little")
     rom[0x7FFC:0x7FFE] = labels["reset"].to_bytes(2, "little")
     rom[0x7FDC:0x7FE0] = b"\xFF\xFF\x00\x00"
+    if name == "snes-rtc":
+        rom[0x7FD5] = 0x3A   # HiROM, fast, SPC7110
+        rom[0x7FD7] = 0x06   # 64 KiB
+        rom = bytearray(0x8000) + rom
+        base = 0xFFC0 - 0x7FC0
+    else:
+        base = 0
     total = sum(rom) & 0xFFFF
-    rom[0x7FDC:0x7FDE] = (total ^ 0xFFFF).to_bytes(2, "little")
-    rom[0x7FDE:0x7FE0] = total.to_bytes(2, "little")
+    rom[base + 0x7FDC:base + 0x7FDE] = (total ^ 0xFFFF).to_bytes(2, "little")
+    rom[base + 0x7FDE:base + 0x7FE0] = total.to_bytes(2, "little")
     return bytes(rom)
 
 

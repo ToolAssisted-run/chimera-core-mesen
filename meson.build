@@ -32,7 +32,8 @@ endif
 # plugged in by the host for a cartridge whose header does not ask (0008),
 # the cartridges' clocks on the machine's own time (0009), a file with no
 # folder kept as named (0010), at most 8 pieces of a disc image kept (0011),
-# the WonderSwan's row buffers zeroed (0012).
+# the WonderSwan's row buffers zeroed (0012), a cartridge's clock started at
+# the host's time of day (0013).
 defs = [
   '-DNDEBUG',
   '-DMESEN_SINGLE_THREAD',
@@ -47,6 +48,7 @@ defs = [
   '-DMESEN_BARE_FOLDERLESS',
   '-DMESEN_CHUNK_LIMIT=8',
   '-DMESEN_ZERO_WS_ROWS',
+  '-DMESEN_CLOCK_START',
 ]
 add_project_arguments(defs + ['-fno-strict-aliasing', '-Wno-narrowing'], language: ['c', 'cpp'])
 

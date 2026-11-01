@@ -2001,3 +2001,132 @@ program (Work RAM) and the PC Engine Avenue Pad 6 program (Work RAM) each
 end on the same memory on Windows as on Linux. No input was given, so the
 devices were idle; sound was not compared.
 
+
+
+## The owner's decisions of 2026-11-01, second round (user-decided, 2026-11-01)
+
+The owner answered the question on Clock Start and asked for the rest of
+the controllers:
+
+1. **Cartridge clocks start at Clock Start.** Every cartridge clock Mesen
+   emulates starts at the project's Clock Start, as the setting promises:
+   the S-3511A of the Game Boy Advance and WonderSwan cartridges, the
+   SPC7110's clock (the RTC-4513) on the Super NES, and the Game Boy's MBC3
+   clock. This changes the machine only for projects that set another date
+   for a game with such a clock, with one exception said below (the
+   SPC7110's clock).
+2. **Every remaining controller Mesen emulates, keyboards included.** The
+   devices left out by the round before (the list in "Controllers and
+   models Mesen has that the package does not offer"), and anything else
+   MesenCE's source has, are offered as the earlier devices were: a port,
+   expansion or model setting, controls with default keys, lag and input
+   polls, texts in the 26 language tables with names unbent, and a test
+   program of this repository's own that reads each device. The NES's
+   published machine stays the same. A device that stores data outside the
+   machine (a data recorder, a Turbo File, a Barcode Battler) needs a file
+   Chimera may have no way to give: such a device is put to the owner
+   instead of being built.
+
+## 2026-11-01: Clock Start reaches every cartridge clock (patch 0013)
+
+What Mesen does with no saved clock (the case of every project: Chimera
+gives no clock file), from MesenCE's source at the pin:
+
+| Clock | Machines | Mesen starts it at | Now |
+| --- | --- | --- | --- |
+| S-3511A (`Core/Shared/Utilities/S3511ARtc.cpp`) | Game Boy Advance cartridges with a clock; WonderSwan Bandai 2003 cartridges (and WonderWitch) | 2000-01-01 00:00:00 | Clock Start's date and time |
+| RTC-4513 (`Core/SNES/Coprocessors/SPC7110/Rtc4513.cpp`) | Super NES cartridges with the SPC7110 and its clock | all registers zero: month 0, which Mesen takes for "no date" and does not run | Clock Start's date and time |
+| MBC3 clock (`Core/Gameboy/Carts/GbMbc3Rtc.h`) | Game Boy and Game Boy Color MBC3 cartridges with a clock | 00:00:00, day 0 | Clock Start's time of day, day 0 |
+
+No other clock is in Mesen: the NES, the PC Engine, the Master System
+family and the WonderSwan's other cartridges have none; the Super NES's
+S-RTC (one game) is not emulated by Mesen; the Satellaview's date was
+already Clock Start (`BsxCustomDate`).
+
+**Patch 0013 (`MESEN_CLOCK_START`)**: when a clock
+finds no saved clock, it is set from the machine's time of day
+(`MesenVirtualClockMs`, which the core starts at Clock Start, patch 0009).
+`Core/Shared/Utilities/ClockStart.h` (new, in the patch) works the date out
+from the seconds without the C library. Each chip holds what it can:
+
+- the S-3511A: the year's last two digits (the chip has two; Mesen reads
+  them as 2000 to 2099), the month, the day, the hour in the chip's 12 or
+  24 hour mode, minutes and seconds, in BCD; its day of the week counted as
+  Mesen counts it when it starts the clock itself, 0 on 2000-01-01, so that
+  a project left at the default date gets exactly the clock it got before;
+- the RTC-4513: the same digits, the hour in 24 hours (Mesen does not
+  emulate its 12-hour mode), and the day of the week as the chip counts
+  it, 0 on a Sunday;
+- the MBC3 clock: hours, minutes and seconds; its day counter starts at 0,
+  as before. The MBC3 clock holds no date (only a count of days), so the
+  date of Clock Start does not reach it; its time of day does.
+
+What changes for a project:
+
+- At the default Clock Start (2000-01-01 00:00:00), the S-3511A and the
+  MBC3 clock start exactly as before: no Game Boy Advance, WonderSwan or
+  Game Boy project changes.
+- **The SPC7110's clock changes even at the default date.** Mesen started it
+  at all zeros, which a game reads as a clock that was never set; it now
+  starts at the default's 2000-01-01 00:00:00 (a Saturday). The one game
+  with that chip and clock is Tengai Makyou Zero (Far East of Eden Zero,
+  Japan), which asks the player to set a clock it finds unset; with a set
+  clock it may not ask. Its projects made before this change can play
+  differently. None of the owner's files is that game; it was not tried.
+- A project that set another date gets that date in its cartridge's clock
+  (before, those clocks ignored it).
+- A saved clock (the clock file Mesen writes beside a saved game, kept in
+  memory by the core across a power cycle) is loaded as before.
+
+### The test programs
+
+Three new cartridges of this repository's own read their clocks every frame
+and keep what they read in RAM (`waterbox/tests/clocks.py` says where):
+
+- `tests/roms/gb-rtc.gb` (`tests/gb-test/make-gb-test.py`): the Game Boy
+  test program on an MBC3 cartridge with a clock: it latches the clock and
+  reads its five registers into WRAM $C010;
+- `tests/roms/ws-rtc.ws` (`tests/ws-test`, assembled with `RTC`): the
+  WonderSwan test program on a Bandai 2003 cartridge, reading the date and
+  time through ports $CA and $CB into Work RAM $0110;
+- `snes-rtc.sfc` (built at test time by `tests/snes-test/make-snes-test.py`):
+  the Super NES test program on an SPC7110 cartridge with its clock,
+  reading the sixteen registers into WRAM $70. It is 64 KiB with a HiROM
+  header: Mesen maps an SPC7110 cartridge the HiROM way, and its mapping
+  reads past the end of a 32 KiB file (an assertion in the C++ library
+  stopped the first, 32 KiB, version natively).
+
+The Game Boy Advance test program already read its S-3511A (`gba:rtc`).
+
+### Checks
+
+- `<machine>:clock-start` for `gba`, `gb`, `ws` and `snes`
+  (`waterbox/tests/systems.sh`, CI runs them): 600 frames with Clock Start
+  at its default and at 2026-11-01 13:45:30, natively, in the sandbox and
+  in the sandbox with a save and a load around every frame; the clock must
+  say what `clocks.py` works out: that date and time moved on by the
+  machine's time when the last frame reads it (10 s on the Game Boy
+  Advance, 7 s on the WonderSwan, 9 s on the Super NES, 10 s of the Game
+  Boy's own cycles).
+- `engine:clock-start`: projects made by chimera-run with Clock Start
+  2026-11-01 13:45:30, replayed by another chimera-run (`engine:gba-clock`,
+  `engine:gb-clock`): the Game Boy Advance's and the Game Boy's clocks say
+  that date and time, so the setting reaches the clocks from a project.
+- `gba:rtc` passes as before (the default date, the host stopped 3 s).
+
+Measured: `run-gate.sh` with Chimera main cb46d2b7 (`~/chimera-scratch-bump`),
+the owner's files (`MESEN_CONTENT_DIR`, `MESEN_SYSTEMS_CONTENT`) and the
+published NES package (Nightly 2026-10-31, a874aa55, downloaded from this
+repository's releases): 308 ok, 0 failed (301 before; the seven new are the
+four `<machine>:clock-start`, `engine:gba-clock`, `engine:gb-clock` and
+`engine:clock-start`), only FamiStudio's checks skipped; `nes:published`
+and `engine:nes-published` pass. `run-frontend.sh` 43 ok; `test-packages`
+PASS; `check-core-texts.py` 192 keys; `check-names.py` 0 in 26 tables;
+`check-proper-nouns.py` 0.
+
+Seen to fail: a copy of the repository built without `MESEN_CLOCK_START`
+(native and sandbox): all four `clock-start` checks failed - the Game Boy
+Advance's clock said 2000-01-01 12:00:10 AM, not 2026-11-01 1:45:40 PM; the
+Game Boy's 00:00:10, not 13:45:40; the WonderSwan's 2000-01-01; the
+SPC7110's nothing at all (00-00-00 00:00:00) where the default date was
+wanted.

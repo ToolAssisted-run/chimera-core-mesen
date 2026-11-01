@@ -24,7 +24,8 @@ of the work.
   host, no network code, the Arkanoid knob where the host says, the EPSM
   plugged in by a setting, the cartridges' clocks on the machine's time, a
   file with no folder kept as named, a disc image's pieces kept to eight,
-  the WonderSwan's row buffers zeroed). `patches/series-marker` names the
+  the WonderSwan's row buffers zeroed, a cartridge's clock started at Clock
+  Start). `patches/series-marker` names the
   string the last patch adds.
 - `meson.build` - one build, two flavors: native (`run-native`, `run-wbx`)
   and guest (`core.wbx`, through the cross file `waterbox/setup-guest.sh`

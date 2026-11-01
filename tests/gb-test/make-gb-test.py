@@ -7,7 +7,9 @@ Usage: make-gb-test.py <out dir>
 
 Writes gb-test.gb (32 KiB, MBC1 with 8 KiB of battery-backed RAM). Its
 header says it runs on the Game Boy and, in colour, on the Game Boy Color,
-so the same file is the test of both machines.
+so the same file is the test of both machines. It also writes gb-rtc.gb,
+the same program on an MBC3 cartridge with a clock, which each frame also
+reads the clock (below).
 
 What the program does:
   - at power on it keeps the A register the boot program left in RAM $C002:
@@ -25,6 +27,12 @@ What the program does:
     background colour 0 is the byte twice ($FF68/$FF69);
   - channel 1 plays at the frequency the byte gives (low 8 bits the byte,
     high bits 6), restarted each frame.
+
+gb-rtc.gb (MBC3, a clock, 8 KiB of battery-backed RAM) also latches the
+clock each frame (writes 0 then 1 to $6000), reads its five registers
+(seconds, minutes, hours, the day counter's low 8 bits, and its top bit
+with the halt and carry flags; RAM banks $08-$0C at $A000) into RAM
+$C010-$C014, and selects RAM bank 0 again.
 
 The 48 bytes at $0104-$0133 (the logo) are left zero: the boot program Mesen has of
 its own (SameBoy's) runs the game without Nintendo's logo, and this
@@ -66,7 +74,7 @@ class Asm:
         return self.out
 
 
-def program():
+def program(rtc=False):
     a = Asm(0x150)
     a.b(0xF3)                          # DI
     a.b(0xEA, 0x02, 0xC0)              # LD ($C002),A: the boot program's A, $01 or $11
@@ -101,6 +109,13 @@ def program():
     a.b(0x3E, 0x30, 0xE0, 0x00)        # select nothing
     a.b(0x78, 0xEA, 0x00, 0xC0)        # LD A,B; LD ($C000),A
     a.b(0x21, 0x01, 0xC0, 0x34)        # LD HL,$C001; INC (HL)
+    if rtc:
+        a.b(0xAF, 0xEA, 0x00, 0x60)    # XOR A; LD ($6000),A
+        a.b(0x3E, 0x01, 0xEA, 0x00, 0x60)  # LD A,1; LD ($6000),A: the clock latched
+        for i in range(5):
+            a.b(0x3E, 0x08 + i, 0xEA, 0x00, 0x40)  # LD A,$08+i; LD ($4000),A: register i
+            a.b(0xFA, 0x00, 0xA0, 0xEA, 0x10 + i, 0xC0)  # LD A,($A000); LD ($C010+i),A
+        a.b(0xAF, 0xEA, 0x00, 0x40)    # XOR A; LD ($4000),A: RAM bank 0 again
     a.b(0x78, 0xEA, 0x00, 0xA0)        # battery RAM: the byte...
     a.b(0xFA, 0x01, 0xC0, 0xEA, 0x01, 0xA0)  # ...and the frame count
     a.b(0x78, 0xE0, 0x47)              # BGP = the byte
@@ -111,22 +126,25 @@ def program():
     a.label("leave")
     a.b(0xF0, 0x44, 0xFE, 0x90)        # wait for the line to change
     a.jr(0x28, "leave")
-    a.jr(0x18, "main")
+    if rtc:
+        a.b(0xC3, a.labels["main"] & 0xFF, a.labels["main"] >> 8)  # JP main: too far for JR
+    else:
+        a.jr(0x18, "main")
     return a.resolve()
 
 
-def cart():
+def cart(rtc=False):
     rom = bytearray(0x8000)
     rom[0x100:0x104] = bytes([0x00, 0xC3, 0x50, 0x01])  # NOP; JP $0150
     rom[0x134:0x143] = b"CHIMERA MESEN".ljust(15, b"\0")
     rom[0x143] = 0x80   # runs on the Game Boy and, in colour, on the Game Boy Color
     rom[0x146] = 0x00
-    rom[0x147] = 0x03   # MBC1, RAM, battery
+    rom[0x147] = 0x10 if rtc else 0x03   # MBC3, clock, RAM, battery; or MBC1, RAM, battery
     rom[0x148] = 0x00   # 32 KiB
     rom[0x149] = 0x02   # 8 KiB of RAM
     rom[0x14A] = 0x01
     rom[0x14B] = 0x00
-    code = program()
+    code = program(rtc)
     rom[0x150:0x150 + len(code)] = code
     x = 0
     for i in range(0x134, 0x14D):
@@ -142,6 +160,8 @@ def main():
         sys.exit(__doc__)
     with open(os.path.join(sys.argv[1], "gb-test.gb"), "wb") as f:
         f.write(cart())
+    with open(os.path.join(sys.argv[1], "gb-rtc.gb"), "wb") as f:
+        f.write(cart(rtc=True))
 
 
 if __name__ == "__main__":
