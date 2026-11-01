@@ -1987,3 +1987,17 @@ Family Trainer's squares said inactive (`engine:devices`): 217 ok, 7
 failed with Chimera.
 
 None of the owner's files uses these devices; no game was tried.
+
+
+## Windows, for the controllers and the Game Boy Advance (2026-11-01)
+
+Run by the owner's session before pushing, with chimera-run.exe of the
+published Chimera for Windows (Development build cb46d2b7), each project
+made with chimera-run --new-project and run 600 frames with recording on
+(frames=600 read from each --meta): the Game Boy Advance test program with
+BIOS None (EWRAM), the Super NES devices program with the Mouse in port 1
+and the Super Scope in port 2 (WRAM), the Master System Light Phaser
+program (Work RAM) and the PC Engine Avenue Pad 6 program (Work RAM) each
+end on the same memory on Windows as on Linux. No input was given, so the
+devices were idle; sound was not compared.
+
