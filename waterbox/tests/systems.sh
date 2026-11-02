@@ -859,7 +859,7 @@ sys_engine_leg() { # check machine rom settings players frames domain [src=id]..
 		--settings "$settings" "${fw[@]}" > "$work/$check.make.log" 2>&1
 	# the native reference runs with the settings the project recorded (all
 	# of them, at the values chimera-run gave the ones --settings left out)
-	wd="$(sysdir "eng.$check" "$rom" "$(python3 -I -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["settings"]))' "$pd/p.chimeraProject" 2>/dev/null)" "$@")"
+	wd="$(sysdir "eng.$check" "$rom" "$(python3 -I -c 'import json, sys, zipfile; print(json.dumps(json.load(zipfile.ZipFile(sys.argv[1]).open("project.json"))["settings"]))' "$pd/p.chimeraProject" 2>/dev/null)" "$@")"
 	"$rn" "$wd" --frames "$frames" --inputs "$work/$check.inputs" --wire "$(python3 -I "$sys_py" wire "$machine")" \
 		--dump-domain "$domain" "$work/$check.native.ram" > /dev/null 2>&1
 	"$runner" --project "$pd/p.chimeraProject" "$package" --files "$pd" "${fw[@]}" \
@@ -895,7 +895,7 @@ sys_device_engine_leg() { # device
 	python3 -I "$md" movie "$dev" "$pd/in.inputs" "$pd/movie.txt"
 	"$runner" --new-project "$pd/p.chimeraProject" "$package" "$pd/$rom" "$pd/movie.txt" \
 		--settings "$settings" > "$pd/make.log" 2>&1
-	wd="$(sysdir "eng.$dev" "$root/tests/roms/$rom" "$(python3 -I -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["settings"]))' "$pd/p.chimeraProject" 2>/dev/null)")"
+	wd="$(sysdir "eng.$dev" "$root/tests/roms/$rom" "$(python3 -I -c 'import json, sys, zipfile; print(json.dumps(json.load(zipfile.ZipFile(sys.argv[1]).open("project.json"))["settings"]))' "$pd/p.chimeraProject" 2>/dev/null)")"
 	"$rn" "$wd" --frames 240 --inputs "$pd/in.inputs" --wire "$(python3 -I "$sys_py" wire "$m")" --neutral "$(python3 -I "$md" neutral "$dev")" \
 		--dump-domain "$domain" "$pd/native.ram" > /dev/null 2>&1
 	"$runner" --project "$pd/p.chimeraProject" "$package" --files "$pd" --count-input-polls \
@@ -935,7 +935,7 @@ sys_cd_engine_leg() {
 	"$runner" --project "$pd/p.chimeraProject" "$package" --suggest > "$pd/suggest.txt" 2>&1
 	"$runner" --project "$pd/p.chimeraProject" "$package" --files "$pd" --firmware "syscard3.pce=$card" \
 		--dump "Work RAM=$work/pcecd.engine.ram" --meta "$work/pcecd.meta" > "$pd/log" 2>&1
-	wd="$(sysdir eng.pcecd "$cue" "$(python3 -I -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["settings"]))' "$pd/p.chimeraProject" 2>/dev/null)" "$card=syscard3.pce" "$img=$(basename "$img")")"
+	wd="$(sysdir eng.pcecd "$cue" "$(python3 -I -c 'import json, sys, zipfile; print(json.dumps(json.load(zipfile.ZipFile(sys.argv[1]).open("project.json"))["settings"]))' "$pd/p.chimeraProject" 2>/dev/null)" "$card=syscard3.pce" "$img=$(basename "$img")")"
 	python3 -I -c 'import json, sys; print(json.dumps({"disc": [sys.argv[1]]}))' "$(basename "$cue")" > "$wd/slots"
 	"$rn" "$wd" --frames 1200 --inputs "$work/pcecd.inputs" --wire "$(python3 -I "$sys_py" wire pcecd)" \
 		--dump-domain "Work RAM" "$work/pcecd.native.ram" > /dev/null 2>&1

@@ -375,7 +375,7 @@ system_window_leg() { # check tag file settings system-id domain hold-names [src
 	wd="$work/native.$tag"
 	rm -rf "$wd" && mkdir -p "$wd" && cp "$file" "$wd/"
 	python3 -I -c 'import json, sys; print(json.dumps({"cart": [sys.argv[1]]}))' "$(basename "$file")" > "$wd/slots"
-	python3 -I -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["settings"]))' "$p" > "$wd/settings"
+	python3 -I -c 'import json, sys, zipfile; print(json.dumps(json.load(zipfile.ZipFile(sys.argv[1]).open("project.json"))["settings"]))' "$p" > "$wd/settings"
 	for f in "$@"; do src="${f%%=*}"; [ -f "$src" ] || src="$scontent/firmware/$src"; cp "$src" "$wd/${f##*=}"; done
 	local specs=() name
 	IFS=, read -r -a names <<< "$holdnames"
@@ -493,7 +493,7 @@ if [ -f "$cdcue" ] && [ -f "${cdcue%.cue}.img" ] && [ -f "$cdcard" ]; then
 	wd="$work/native.pcecd"
 	rm -rf "$wd" && mkdir -p "$wd" && cp "$cdcue" "${cdcue%.cue}.img" "$wd/" && cp "$cdcard" "$wd/syscard3.pce"
 	python3 -I -c 'import json, sys; print(json.dumps({"disc": [sys.argv[1]]}))' "$(basename "$cdcue")" > "$wd/slots"
-	python3 -I -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["settings"]))' "$dir/pcecd.chimeraProject" > "$wd/settings"
+	python3 -I -c 'import json, sys, zipfile; print(json.dumps(json.load(zipfile.ZipFile(sys.argv[1]).open("project.json"))["settings"]))' "$dir/pcecd.chimeraProject" > "$wd/settings"
 	"$rn" "$wd" --frames "$frames" --wire 1,8 --dump-domain "Work RAM" "$work/native.pcecd.ram.bin" > "$work/native.pcecd.txt" 2>&1
 	printf 'frames=%s\nout=%s\nmeta=%s\nshot=\nhold=\nsystem=PCECD\ndomain=Work RAM\n' "$frames" "$work/pcecd.ram.bin" "$work/pcecd.meta.txt" > "$work/job.pcecd.txt"
 	( cd "$work" && MINIHAWK_JOB="$work/job.pcecd.txt" timeout -s KILL 900 "$chimera_exe" --headless \
@@ -536,7 +536,7 @@ device_window_leg() { # check device held-buttons axes(name:value,...)
 	wd="$work/native.$dev"
 	rm -rf "$wd" && mkdir -p "$wd" && cp "$root/tests/roms/$rom" "$wd/"
 	python3 -I -c 'import json, sys; print(json.dumps({"cart": [sys.argv[1]]}))' "$rom" > "$wd/slots"
-	python3 -I -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["settings"]))' "$p" > "$wd/settings"
+	python3 -I -c 'import json, sys, zipfile; print(json.dumps(json.load(zipfile.ZipFile(sys.argv[1]).open("project.json"))["settings"]))' "$p" > "$wd/settings"
 	python3 -I "$md" hold "$dev" "$frames" "$work/$dev.inputs" "$holdnames" "$axes"
 	"$rn" "$wd" --frames "$frames" --wire "$(python3 -I "$sys_py" wire "$m")" --neutral "$(python3 -I "$md" neutral "$dev")" \
 		--inputs "$work/$dev.inputs" --dump-domain "$domain" "$work/native.$dev.ram.bin" > "$work/native.$dev.txt" 2>&1
@@ -581,7 +581,7 @@ nes_device_window_leg() { # check device held-buttons axes(name:value,...)
 	wd="$work/native.$dev"
 	rm -rf "$wd" && mkdir -p "$wd" && cp "$root/tests/roms/$rom" "$wd/"
 	printf '{"rom":["%s"]}' "$rom" > "$wd/slots"
-	python3 -I -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["settings"]))' "$p" > "$wd/settings"
+	python3 -I -c 'import json, sys, zipfile; print(json.dumps(json.load(zipfile.ZipFile(sys.argv[1]).open("project.json"))["settings"]))' "$p" > "$wd/settings"
 	python3 -I "$nd" hold "$dev" "$frames" "$work/$dev.inputs" "$holdnames" "$axes"
 	"$rn" "$wd" --frames "$frames" --inputs "$work/$dev.inputs" --dump-domain RAM "$work/native.$dev.ram.bin" > "$work/native.$dev.txt" 2>&1
 	"$rn" "$wd" --frames "$frames" --dump-domain RAM "$work/native.$dev.idle.ram.bin" > /dev/null 2>&1
